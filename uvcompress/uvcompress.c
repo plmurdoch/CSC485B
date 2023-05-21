@@ -52,7 +52,7 @@ int main(){
     while((next_character = fgetc(stdin)) != EOF){
 		strncat(input_string,next_character, 1);
 		if (strlen(input_string) == INPUT_SIZE){
-			Encode(add_index, curr_bits, input_string, Index_Table);
+			Encode(add_index, curr_bits, input_string, Index_Table, init_size);
 			ResetStr(input_string);
 		}
 	}
@@ -62,9 +62,38 @@ int main(){
 }
 //Step 3: construct LZW algorithm (Utilize Sudocode)
 //Step 4: piping contents out to command line (Reverse char bit order, package all 8 bits, reverse 8 bits, output) Note: IF EOF found last bits packed with 0s till 8 bits)
-void Encode(int next_symbol, int bits, char* str, ITEntry* I_T){
+void Encode(int next_symbol, int bits, char* str, ITEntry* I_T, int size){
 	char* working = "";
-	
+	for(int i = 0; i< strlen(str); i++){
+		char* augmented = strcpy(working);
+		strncat(augmented, str[i], 1);
+		strncat(augmented, '\0', 1);
+		int index_num = Comparison(I_T, augmented, size);
+		if(index_num != 65536){
+			ResetStr(working);
+			strncpy(working, augmented, strlen(augmented)-1);
+		}
+		else if(next_symbol >= pow(2,16)){
+			int max_case = Comparison(I_T, working, size);
+			output(max_case);
+			ResetStr(working);
+			strncpy(working, str[i], 1);
+		}
+		else{
+			int symbol_id = next_symbol;
+			NewEntry(I_T, augmented, next_symbol,size);
+			output(symbol_id);
+			ResetStr(working)
+			strncpy(working, str[i], 1);
+			if(next_symbol > pow(2,bits)){
+				bits++
+			}
+		}
+	}
+	if (strlen(working) > 0){
+		int last_index = Comparison(I_T, working, size);
+		output(last_index);
+	}		
 }
 
 
@@ -113,7 +142,7 @@ int Comparison(ITEntry* I_T, char* cmpstr, int size){
 			return i;
 		}
 	}
-	return 0
+	return 65536;
 }
 
 
