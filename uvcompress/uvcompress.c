@@ -64,9 +64,10 @@ int main(){
 //Step 4: piping contents out to command line (Reverse char bit order, package all 8 bits, reverse 8 bits, output) Note: IF EOF found last bits packed with 0s till 8 bits)
 void Encode(int next_symbol, int bits, char* str, ITEntry* I_T, int size){
 	char* working = "";
+	int saved_bits[8];
 	for(int i = 0; i< strlen(str); i++){
 		char* augmented = strcpy(working);
-		strncat(augmented, str[i], 1);
+		strncat(augmented, &str[i], 1);
 		strncat(augmented, '\0', 1);
 		int index_num = Comparison(I_T, augmented, size);
 		if(index_num != 65536){
@@ -75,14 +76,14 @@ void Encode(int next_symbol, int bits, char* str, ITEntry* I_T, int size){
 		}
 		else if(next_symbol >= pow(2,16)){
 			int max_case = Comparison(I_T, working, size);
-			output(max_case);
+			output(max_case, saved_bits);
 			ResetStr(working);
 			strncpy(working, str[i], 1);
 		}
 		else{
 			int symbol_id = next_symbol;
 			NewEntry(I_T, augmented, next_symbol,size);
-			output(symbol_id);
+			output(symbol_id, saved_bits);
 			ResetStr(working)
 			strncpy(working, str[i], 1);
 			if(next_symbol > pow(2,bits)){
@@ -151,4 +152,8 @@ void ResetStr(char *str){
 	strncpy(str, none_string,INPUT_SIZE)	
 }
 
-
+void Output(int symbol_number, int* queue){
+	
+		
+	}
+}
