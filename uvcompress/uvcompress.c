@@ -31,7 +31,7 @@ void NewEntry(ITEntry* I_T, char* new_entry, int indx, int size);
 int Comparison(ITEntry* I_T, char* cmpstr,int size);
 void Encode(int next_symbol, int bits, char* str, ITEntry* I_T);
 void ResetStr(char* str);
-
+void Output(int symbol_number, int curr_bits, int* queue);
 
 
 /*
@@ -152,8 +152,29 @@ void ResetStr(char *str){
 	strncpy(str, none_string,INPUT_SIZE)	
 }
 
-void Output(int symbol_number, int* queue){
-	
-		
+void Output(int symbol_number, int curr_bits, int* queue){
+	int become_bin = symbol_number;
+	int reverse_bin[curr_bits]
+	int count = 0;
+	while(become_bin != 0){
+		int bin_digit = reverse_bin % 2;
+		reverse_bin[count] = bin_digit;
+		count++;
+		become_bin =(become_bin-bin_digit)/2
 	}
+	count = sizeof(queue);
+	for(int i = 0; i<sizeof(reverse_bin); i++){
+		queue[count] = reverse_bin[i];
+		count++;
+		if(count == 8){
+			Offload(queue);
+			count = 0;
+		}
+	}
+}
+void Offload(int* queue){
+	for(int i = 7; i>= 0; i--){
+		fwrite(queue[i],sizeof(int),sizeof(queue[i]),stdout);
+	}
+	queue = []
 }
