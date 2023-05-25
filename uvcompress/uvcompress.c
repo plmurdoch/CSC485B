@@ -4,15 +4,26 @@
    Placeholder starter code for UVCompress
    Provided by: B. Bird - 2023-05-01
 
-   Student Name: Payton Murdoch
+   Student Name: Payton M
    V#:V00904677
    Due Date: 2023-05-23
-*/
+   Note: I did not perform well on this assignment.
+   I understand that I will receive a 0 grade.
+   I failed to optimize this code with a more efficient data structure.
+   Therefore it will fail due to lookup computation times. 
+   Secondly, this file is susceptible to overflow as its memory is not dynamically optimized 
+   Additionally, in general I failed to make a proper compression algorithm.
+   I know I can do better and I will try my hardest to excel and do better.
+   Sincerely,
+   Payton Larsen Murdoch.
+   */
+//added -lm to the Makefile so that I could use pow commands for changing dictionary length.
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
 
+//Initial Definitions
 #define INITIAL_ENTRY 256
 #define FIRST_ENTRY 257
 #define BASE 2
@@ -21,16 +32,22 @@
 #define INPUT_SIZE 10
 #define PACKETIZE 8
 
-void Encode(char* str, char** dict, char* working, int length, int next, int bit, int size, int* carryover);
+//Info struct for globally utlized variables associated with the dictionary and bit sizes
+typedef struct{
+        int curr_bit;
+        int next_symbol;
+        int carry_size;
+}Info;
+
+//Function prototypes
+void Encode(char* str, int size, char** dict, char* working, int length,Info *info, int* carryover);
 int Comparison(char** dict, char *str, int size);
-void Output(int number, int bit, int* carryover);
+void Output(int number, int bit, int* carryover, Info *info);
 void ReverseOrder(int* carryover);
-/*
-If combination of char and char +1 in the dictionary output index number
-else add combination to the dictionary with the next available index number
-*/
-//what to do, create index structure so we know how to add elements to it
+
+//Main function for code
 int main(){
+	//Initializing dictionary
     char **dict;
     dict = malloc(pow(BASE,INITIAL_BIT)*sizeof(char*));
     for(int i = 0; i <INITIAL_ENTRY; i++){
@@ -38,72 +55,93 @@ int main(){
         dict[i][0] = i;
         dict[i][1] ='\0';
     }
-    fputc(0x1f,stdout);
-    fputc(0x9d,stdout);
-    fputc(0x90,stdout);
-    int next_symbol = FIRST_ENTRY;
-    int bits = INITIAL_BIT;
+	//Add magic numbers to output
+    int arr = 0x1f;
+    fwrite(&arr, 1,1,stdout);
+    arr = 0x9d;
+    fwrite(&arr, 1,1,stdout);
+    arr = 0x90;
+    fwrite(&arr, 1,1,stdout);
+	//Initialize information for other functions to work in unison.
+    Info dict_info;
+    dict_info.curr_bit = INITIAL_BIT;
+    dict_info.next_symbol = FIRST_ENTRY;
+    dict_info.carry_size = 0;
+	//local variables for while function.
     char next_character;
     int count = 0;
-    int size = INITIAL_ENTRY;
     char input_string[10];
-    int length = 2;
-    char *work = malloc(length*sizeof(char));
+    int length = pow(BASE,MAX_BIT);
+    char work[length];
     int carry[PACKETIZE];
+	//Get the sequences of chars.
     while((next_character = fgetc(stdin))!=EOF){
 		input_string[count] = next_character;
         count++;
+		//if there are 10 chars in the string then offload and start computing.
         if(count == 10){
-			Encode(input_string, dict, work,length, next_symbol, bits, size, carry);
+			Encode(input_string, 10, dict, work,length, &dict_info, carry);
             count = 0;
             strncpy(input_string,"",sizeof(input_string));
         }
     }
+	//after initial function if there are still leftover characters to start computing.
+	if (0 <count && count <=10){
+		Encode(input_string, count, dict, work, length, &dict_info, carry);
+	}
+	//if there is still strings or characters in the working string that has not been computed yet.
     if(strlen(work) > 0){
-		int last_num = Comparison(dict,work, size);
-        Output(last_num,bits,carry);
+		int last_num = Comparison(dict,work, dict_info.next_symbol);
+        if(last_num == 65536){
+			last_num = dict_info.next_symbol;
+        }
+        Output(last_num, dict_info.curr_bit,carry, &dict_info);
     }
+	//Lastly for padding the last bit array with zeros until it can be sent for computing.
+    if(dict_info.carry_size != 0){
+        for (int i = dict_info.carry_size; i<8; i++){
+            carry[i] = 0;
+        }
+        ReverseOrder(carry);
+    }
+	//Free dictionary.
+	for(int i = 0; i <pow(2,dict_info.curr_bit); i++){
+		free(dict[i]);
+    }
+	free(dict);
 }
-
-void Encode(char* str, char** dict, char *working, int length, int next, int bit, int size, int* carryover){
-    for(int i=0; i < INPUT_SIZE; i++){
-		char augmented[length+1];
+//Main encoding function, where the brunt of the encode algorithm works. Self explanitory as it abides by the pseudocode.
+void Encode(char* str, int size, char** dict, char *working, int length, Info *info, int* carryover){
+    for(int i=0; i < size; i++){
+        char augmented[length];
         strncpy(augmented, working, length);
         char str1[2];
         str1[0] = str[1];
         str1[1] ='\0';
-        strncat(augmented,str1,2);
-        int index_num = Comparison(dict, augmented, size);
+        strcat(augmented,str1);
+        int index_num = Comparison(dict, augmented, info->next_symbol);
         if(index_num != 65536){
-			length++;
-            free(working);
-            working = malloc(length*sizeof(char));                       
-			strncpy(working,augmented,length);
-        }else if(next >=pow(BASE,MAX_BIT)){
-			int work_index = Comparison(dict, working, size);
-            Output(work_index,bit, carryover);
-            free(working);
-            working = malloc(length*sizeof(char));
-                        strncpy(working,str1,length);
+			strcpy(working,augmented);
+		}else if(info->next_symbol >=pow(BASE,MAX_BIT)){
+			int work_index = Comparison(dict, working, info->next_symbol);
+            Output(work_index,info->curr_bit, carryover, info);
+            strcpy(working,str1);
         }else{
-			dict[next] = malloc((length+1)*sizeof(char));
-            strncpy(dict[next], augmented, length+1);
-            int comp_index = next;
-            next++;
-            Output(comp_index, bit, carryover);
-            length++;
-            free(working);
-            working = malloc(length*sizeof(char));
-            strncpy(working, augmented, length);
-            if(next > pow(BASE,bit)){
-				bit++;
-                dict = realloc(dict,pow(BASE,bit)*sizeof(char*));
+            dict[info->next_symbol] = malloc(pow(BASE,MAX_BIT)*sizeof(char));
+            strcpy(dict[info->next_symbol], augmented);
+            int comp_index = Comparison(dict, working, info->next_symbol);
+            info->next_symbol += 1;
+            Output(comp_index, info->curr_bit, carryover, info);
+            strcpy(working, str1);
+            if(info->next_symbol > pow(BASE,info->curr_bit)){
+				info->curr_bit += 1;
+                dict = realloc(dict,pow(BASE,info->curr_bit)*sizeof(char*));
             }
         }
     }
 }
 
-
+//Scan through the dictionary and look for the elements.
 int Comparison(char** dict, char *str, int size){
     for(int i = 0; i<size; i++){
         if(i == 256){
@@ -117,35 +155,40 @@ int Comparison(char** dict, char *str, int size){
 }
 
 
-
-void Output(int number, int bit,int *carryover){
+//Output function performs rudimentary operations for converting ints to binary numbers of size in the current bits.
+void Output(int number, int bit,int *carryover, Info *info){
     int reverse[bit];
     int to_bin = number;
     int count =0;
     while(to_bin != 0){
-		reverse[count] = to_bin &1;
-        to_bin >>= 1;
+		if(to_bin%2 == 0){
+			reverse[count] =0;
+        }else{
+			reverse[count] = 1;
+        }
+		to_bin = to_bin/2;
         count++;
     }
-    int output = sizeof(carryover);
-    for(int i = 0; i< count; i++){
-		if(output != 8){
-			carryover[output] = reverse[i];
-            output++;
+    for(int i = 0; i< bit; i++){
+		if(info->carry_size != 8){
+			carryover[info->carry_size] = reverse[i];
+            info->carry_size += 1;
         }else{
 			ReverseOrder(carryover);
-            int blank[8];
-            carryover = blank;
             carryover[0] = reverse[i];
-            output = 1;
+            info->carry_size = 1;
         }
     }
 }
 
+//Reverse Order computes packetized 8 bit values for printing.
 void ReverseOrder(int *carryover){
     int count = 0;
-    for(int i = 0; i<8; i++){
-		count += carryover[i]*pow(2,i);
+	for(int i = 0; i< 8; i++){
+		if(carryover[i] == 1){
+			count += pow(BASE,i);
+        }
     }
-    fputc(count,stdout);
+    fwrite(&count,1,1,stdout);
 }
+
