@@ -116,11 +116,11 @@ void Encode(char* str, int size, char** dict, char *working, int length, Info *i
         char augmented[length];
         strncpy(augmented, working, length);
         char str1[2];
-        str1[0] = str[1];
+        str1[0] = str[i];
         str1[1] ='\0';
         strcat(augmented,str1);
         int index_num = Comparison(dict, augmented, info->next_symbol);
-        if(index_num != 65536){
+        if(index_num != -1){
 			strcpy(working,augmented);
 		}else if(info->next_symbol >=pow(BASE,MAX_BIT)){
 			int work_index = Comparison(dict, working, info->next_symbol);
@@ -151,7 +151,7 @@ int Comparison(char** dict, char *str, int size){
 			return i;
         }
     }
-    return 65536;
+    return -1;
 }
 
 
