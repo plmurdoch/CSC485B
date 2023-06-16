@@ -13,6 +13,8 @@
 #include <string>
 #include "output_stream.hpp"
 #include <tuple>
+#include <queue>
+#include <map>
 
 // To compute CRC32 values, we can use this library
 // from https://github.com/d-bahr/CRCpp
@@ -39,8 +41,9 @@ void BlockType0(OutputBitStream stream, u32 &block_size, std::array<u8, (1<<16)-
     for(unsigned int i = 0; i < block_size; i++)
         stream.push_byte(block_contents.at(i)); //Interesting optimization question: Will the compiler optimize away the bounds checking for .at here?
     block_size = 0;
+    stream.flush_to_byte();
 }
-std::unordered_map<int, std::tuple<u32, int, u32>> LengthCode1(){
+std::unordered_map<int, std::tuple<u32, int, u32>> LengthCode(){
     std::unordered_map<int, std::tuple<u32,int,u32>> return_map;
     u32 code = 257;
     for(int i = 3; i<259; i++){
@@ -120,7 +123,7 @@ std::unordered_map<int, std::tuple<u32, int, u32>> LengthCode1(){
     }
     return return_map;
 }
-std::unordered_map<int, std::tuple<u32,int, u32>> DistanceCode1(){
+std::unordered_map<int, std::tuple<u32,int, u32>> DistanceCode(){
     std::unordered_map<int, std::tuple<u32,int,u32>> return_map;
     u32 code = 0;
     for(int i = 1; i<32789; i++){
@@ -355,23 +358,129 @@ void Type1BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
     stream.push_bits(0,7);
 }
 
-void Type2BlocckOffload(OutputBitStream &stream, std::vector<std::string> &buff){
+std::pair<std::unordered_map<std::string, int>,std::unordered_map<std::string, int>> FreqDist(std::vector<std::string> buffer, std::unordered_map<int, std::tuple<u32, int, u32>> lengths, std::unordered_map<int, std::tuple<u32, int, u32>> distances){
+    std::unordered_map<std::string, int> dist {};
+    std::unordered_map<std::string, int> freq {};
+    for(auto i:buffer){
+        int pos = i.find(":");
+        if(pos== -1){
+            if(freq.find(i) != freq.end()){
+                freq.at(i)++;
+            }
+            else{
+                freq.insert({i,1});
+            }
+        }else{
+            std::string search1;
+            for(int k= 0; k<pos; k++){
+                search1 += i[k];
+            }
+            int x = stoi(search1);
+            std::tuple<u32,int,u32> LL_C = lengths[x];
+            if(freq.find(std::to_string(std::get<0>(LL_C))) != freq.end()){
+                freq.at(std::to_string(std::get<0>(LL_C)))++;
+            }
+            else{
+                freq.insert({std::to_string(std::get<0>(LL_C)),1});
+            }
+            int size_str = i.length();
+            std::string search2;
+            for(int k = pos+1; k<size_str; k++){
+                search2 += i[k];
+            }
+            int y = stoi(search2);
+            std::tuple<u32, int, u32> D_C = distances[y];
+            if(dist.find(std::to_string(std::get<0>(D_C))) != dist.end()){
+                dist.at(std::to_string(std::get<0>(D_C)))++;
+            }
+            else{
+                dist.insert({std::to_string(std::get<0>(D_C)),1});
+            }
+
+        }
+    }
+    freq.insert({std::to_string(256),1});
+    return std::make_pair(freq,dist);
+}
+struct Node{
+    std::pair<std::string, int> info;
+    struct Node *left, *right;
+
+    Node(std::pair<std::string, int> info){
+        this->info =info;
+        left = right = NULL; 
+    }
+};
+struct comp{
+    bool operator()(Node* left, Node* right){
+        return(left->info.second >right->info.second);
+    }
+};
+void CodesType2(Node* root, std::string code, std::map<u32, std::string> &T2codes){
+    if(root == NULL){
+        return;
+    }
+    if(!root->left &&!root->right){
+        T2codes.at((u32)stoi(root->info.first)) = code;
+    }
+    CodesType2(root->left, code+"0", T2codes);
+    CodesType2(root->right,code+"1", T2codes);
+}
+//https://www.geeksforgeeks.org/huffman-coding-greedy-algo-3/
+//https://www.programiz.com/dsa/huffman-coding
+//https://www.geeksforgeeks.org/priority-queue-in-cpp-stl/
+std::map<u32, std::string> HuffTree(std::unordered_map<std::string, int> table){
+    Node *left, *right, *top;
+    std::priority_queue<Node*, std::vector<Node*>, comp> minimum_queue;
+    for(auto& i:table){
+        minimum_queue.push(new Node(std::make_pair(i.first, i.second)));
+    }
+    while(minimum_queue.size() > 1){
+        left = minimum_queue.top();
+        minimum_queue.pop();
+        right = minimum_queue.top();
+        minimum_queue.pop();
+        top = new Node(std::make_pair("EMPTY",left->info.second +right->info.second));
+        top -> left = left;
+        top ->right = right;
+        minimum_queue.push(top);
+    }
+    std::map<u32, std::string> codes {};
+    CodesType2(top, "", codes);
+    return codes;
+}
+void CLencode(std::map<u32, std::string> code_lengths){
+    std::
+}
+
+void Type2BlocckOffload(OutputBitStream &stream, std::vector<std::string> &buff ){
     /*
     For Type 2 Blocks we have to
-    1. Create a LL Frequency table (std::unordered_map).
-    2. Create a DC frequency table (std::unordered_map).
-    3. Huffman encoding queue of nodes with LL and frequency.
-    4. Huffman encoding queue of distance Codes.
-    5. Write tree encodings into file.
-    6. Encoding similar to type 1.
+    1. Create a stream of CL code for LL and distance code length tables.
+        a. RLE, symbols 0-15 coded individually.
+        b. 16 followed by 2 bit x(means prev symbol repeated x+3)times.
+        c. 17 followed by 3 bit y (means repeat 0 y + 3 times);
+        d. 18 followed by 7 bit z (means repeat 0 z + 11 times);
+    2. Put CL symbol frequencies in a table.
+    3. create CL prefix code.
+    4. CL lengths output first.
+    5. CL code LL & Dist Lengths second.
+    6. Bitstream last.
     */
+    if(buff.size() != MAX_BLOCK_SIZE){
+        stream.push_bit(1);
+    }else{
+        stream.push_bit(0);
+    }
+    stream.push_bits(2, 2); 
 }
-void Search(std::string &back_ref, std::vector<std::string>&buffer, std::string &look_ahead){
+
+void Search(std::vector<u8> &back_ref, std::vector<std::string>&buffer, std::vector<u8> &look_ahead){
     int counter = back_ref.size() -1;
     if(counter <0){
         buffer.push_back(std::to_string((u32)look_ahead.front()));
         back_ref.push_back(look_ahead.front());
-        look_ahead.erase(0,1);
+        look_ahead.erase(look_ahead.begin());
     }else{
         int look_size = look_ahead.size();
         int length_back = back_ref.size();
@@ -405,27 +514,28 @@ void Search(std::string &back_ref, std::vector<std::string>&buffer, std::string 
             buffer.push_back(std::to_string(longest_length_hit)+":"+std::to_string(back_ref.size()-longest_pos));
             for(int i = 0; i<longest_length_hit; i++){
                 if(back_ref.size()>=MAX_BACK_REF){
-                    back_ref.erase(0,1);
+                    back_ref.erase(back_ref.begin());
                 }
                 back_ref.push_back(look_ahead.front());
-                look_ahead.erase(0,1);
+                look_ahead.erase(look_ahead.begin());
             }
         }else{
             buffer.push_back(std::to_string(look_ahead.front()));
             if(back_ref.size()>=MAX_BACK_REF){
-                back_ref.erase(0,1);
+                back_ref.erase(back_ref.begin());
             }
             back_ref.push_back(look_ahead.front());
-            look_ahead.erase(0,1);
+            look_ahead.erase(look_ahead.begin());
         }
     }
 }
 
+
 int main(){
 
     //See output_stream.hpp for a description of the OutputBitStream class
-    std::unordered_map<int, std::tuple<u32, int, u32>> Length_Codes = LengthCode1();
-    std::unordered_map<int, std::tuple<u32, int, u32>> Distance_Codes = DistanceCode1();
+    std::unordered_map<int, std::tuple<u32, int, u32>> Length_Codes = LengthCode();
+    std::unordered_map<int, std::tuple<u32, int, u32>> Distance_Codes = DistanceCode();
     OutputBitStream stream {std::cout};
 
     //Pre-cache the CRC table
@@ -450,8 +560,8 @@ int main(){
 
     //Note that the types u8, u16 and u32 are defined in the output_stream.hpp header
     std::array< u8, (1<<16)-1 > block_contents {};
-    std::string back_ref;
-    std::string look_ahead;
+    std::vector<u8> back_ref;
+    std::vector<u8> look_ahead;
     u32 block_size {0};
     u32 bytes_read {0};
     std::vector<std::string> buffer {};
@@ -474,18 +584,29 @@ int main(){
         crc = CRC::Calculate(&next_byte, 1, crc_table); //This call creates the initial CRC value from the first byte read.
         //Read through the input
         while(1){
-            if(next_byte < 0 && incompressible == 0){
+            if((u8)next_byte < 0 && incompressible == 0){
                 incompressible = 1;
             }
-            look_ahead+=(next_byte);
-            if(look_ahead.size() == 258){
-                Search(back_ref, buffer, look_ahead);
-            }
+            look_ahead.push_back(next_byte);
             block_contents.at(block_size++) = next_byte;
+            if(look_ahead.size() == 258){
+                if( incompressible != 1){
+                    Search(back_ref, buffer, look_ahead);
+                }
+                else{
+                    while(!look_ahead.empty()){
+                        if(back_ref.size()>=MAX_BACK_REF){
+                           back_ref.erase(back_ref.begin());
+                        }
+                        back_ref.push_back(look_ahead.front());
+                        look_ahead.erase(look_ahead.begin());
+                    }
+                }
+            }
             if (!std::cin.get(next_byte)){
                 break;
             }
-            bytes_read++;
+            bytes_read= bytes_read + 1;
             crc = CRC::Calculate(&next_byte,1, crc_table, crc);
             if(block_size == block_contents.size()){
                 if(incompressible == 1){
@@ -493,14 +614,15 @@ int main(){
                     buffer.clear();
                     while(!look_ahead.empty()){
                         if(back_ref.size()>=MAX_BACK_REF){
-                            back_ref.erase(0,1);
+                            back_ref.erase(back_ref.begin());
                         }
                         back_ref.push_back(look_ahead.front());
-                        look_ahead.erase(0,1);
+                        look_ahead.erase(look_ahead.begin());
                     }
                     incompressible = 0;
                 }else{
                     block_size = 0;
+                    incompressible = 0;
                 }
             }
             if(buffer.size() == MAX_BLOCK_SIZE){
@@ -528,7 +650,6 @@ int main(){
         stream.flush_to_byte();
     }
     //Now close out the bitstream by writing the CRC and the total number of bytes stored.
-    
     stream.push_u32(crc);
     stream.push_u32(bytes_read);
     return 0;
