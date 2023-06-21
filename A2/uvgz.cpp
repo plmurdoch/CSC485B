@@ -15,6 +15,7 @@
 #include <tuple>
 #include <queue>
 #include <map>
+#include <cassert>
 
 // To compute CRC32 values, we can use this library
 // from https://github.com/d-bahr/CRCpp
@@ -469,14 +470,14 @@ std::map<u32, std::string> HuffTree(std::unordered_map<std::string, int> table){
 }
 std::vector<u32> CLenstream(std::map<u32, std::string> LL_code_lengths, std::map<u32, std::string> D_code_lengths){
     std::vector<u32> cl;
-    for(int i = 0; i<284; i++){
+    for(int i = 0; i<286; i++){
         if(LL_code_lengths.find(i) != LL_code_lengths.end()){
             cl.push_back((u32)LL_code_lengths.at(i).length());
         }else{
             cl.push_back(0);
         }
     }
-    cl.push_back(LL_code_lengths.at(285).length());
+    assert(cl.size() == 286);
     for(int i = 0; i< 30; i++){
         if(D_code_lengths.find(i) != D_code_lengths.end()){
              cl.push_back((u32)D_code_lengths.at(i).length());
@@ -484,6 +485,7 @@ std::vector<u32> CLenstream(std::map<u32, std::string> LL_code_lengths, std::map
             cl.push_back(0);
         }
     }
+    assert(cl.size() == 286 + 30);
     return cl;
 }
 
@@ -519,16 +521,20 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
              stream.push_bits(0, 3);
         }
     }
+
+    int k = 0;
     for(auto i: CL){
         std::string output= CC.at(i);
         int counter = output.length();
-        for(int j = counter -1 ; j>= 0; j--){
+        //std::cerr << "LL/Dist table: " << k << ": " << i << " [" << output << "] " << counter << std::endl;
+        for(int j = 0; j < counter; j++){
             if(output.at(j)== '1'){
                 stream.push_bit(1);
             }else{
                 stream.push_bit(0);
             }
         }
+        k += 1;
     }
     buff.push_back("256");
     for(auto i: buff){
@@ -536,7 +542,7 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
         if(pos== -1){
             int x = std::stoi(i);
             std::string huffman = Freq.at(x);
-            for(int i = huffman.length()-1; i >= 0; i--){
+            for(int i = 0; i < huffman.length(); i++){
                 if(huffman.at(i)== '1'){
                     stream.push_bit(1);
                 }else{
@@ -561,7 +567,7 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
             std::tuple<u32, int, u32> LC = Length[length_size];
             std::tuple<u32, int, u32> DC = Distance[distance_size];
             std::string huffman_code = Freq.at(std::get<0>(LC));
-            for(int i = huffman_code.length()-1; i>= 0; i--){
+            for(int i = 0; i < huffman_code.length(); i++){
                 if(huffman_code.at(i)== '1'){
                     stream.push_bit(1);
                 }else{
