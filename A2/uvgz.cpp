@@ -426,21 +426,39 @@ void CodesType2(Node* root, std::string code, std::map<u32, std::string> &T2code
     CodesType2(root->left, code+"0", T2codes);
     CodesType2(root->right,code+"1", T2codes);
 }
-//https://www.geeksforgeeks.org/huffman-coding-greedy-algo-3/
-//https://www.programiz.com/dsa/huffman-coding
-//https://www.geeksforgeeks.org/priority-queue-in-cpp-stl/
+
 std::map<u32, std::string> HuffTree(std::unordered_map<std::string, int> table){
     Node *left, *right, *top;
     std::priority_queue<Node*, std::vector<Node*>, comp> minimum_queue;
     for(auto i:table){
         minimum_queue.push(new Node(std::make_pair(i.first, i.second)));
     }
+    if(minimum_queue.size() == 1){
+        minimum_queue.push(new Node(std::make_pair(std::to_string(0),0)));
+    }
     while(minimum_queue.size() > 1){
-        left = minimum_queue.top();
-        minimum_queue.pop();
         right = minimum_queue.top();
         minimum_queue.pop();
+        left = minimum_queue.top();
+        minimum_queue.pop();
         top = new Node(std::make_pair("EMPTY",left->info.second +right->info.second));
+        if(left->info.second == right->info.second){
+            if(left->info.first != "EMPTY"&& right->info.first != "EMPTY"){
+                int lt = std::stoi(left->info.first);
+                int rt = std::stoi(right->info.first);
+                if(lt > rt){
+                    Node * temp = left;
+                    left = right;
+                    right = temp;
+                }
+            }else{
+                if(right->info.first != "EMPTY"){
+                    Node* temp = left;
+                    left = right;
+                    right = temp;
+                }
+            }
+        }
         top->left = left;
         top->right = right;
         minimum_queue.push(top);
@@ -449,232 +467,38 @@ std::map<u32, std::string> HuffTree(std::unordered_map<std::string, int> table){
     CodesType2(top, "", codes);
     return codes;
 }
-std::vector<u32> CLenstream(std::map<u32, std::string> code_lengths, bool L_or_D){
-    std::vector<u32> cl ={};
-    if(code_lengths.begin()->first != 0){
-        u32 back_size = code_lengths.begin()->first - 1;
-        if(back_size >= 3){
-            if(back_size <= 10){
-                cl.push_back(17);
-                cl.push_back(back_size-3);
-            }else if(back_size <= 138){
-                cl.push_back(18);
-                cl.push_back(back_size-11);
-            }else{
-                u32 temp = back_size;
-                int count = 0;
-                while((temp) > 138){
-                    count++;
-                    temp -= 138;
-                }
-                for(int k = 0; k< count; k++){
-                    cl.push_back(18);
-                    cl.push_back(127);
-                }
-                if(temp < 3){
-                    for(u32 k = 0; k < temp; k++){
-                        cl.push_back(0);
-                    }
-                }else if(temp <= 10){
-                    cl.push_back(17);
-                    cl.push_back(temp-3);
-                }else{
-                    cl.push_back(18);
-                    cl.push_back(temp-11);
-                }
-            }
-        }
-        else{
-            for(u32 k = 0; k< back_size; k++){
-                cl.push_back(0);
-            }
-        }
-    }
-    auto last_entry = code_lengths.begin();
-    for(auto i =code_lengths.begin(); i != code_lengths.end(); ++i){
-        auto next = std::next(i);
-        int count = 0;
-        int end_flag = 0;
-        if(next == code_lengths.end()){
-            last_entry = i;
-            end_flag = 1;
-        }
-        if(end_flag != 1){
-            while(next->second.length() == i->second.length() && (next->first ==(i->first)+1)){
-                count++;
-                i = next;
-                ++next;
-            }
-        }
-        if(count != 0){
-            if(count < 4){
-                for(int j = 0; j < count; j++){
-                    cl.push_back(i->second.length());
-                }
-            }else if(count <= 6){
-                cl.push_back(i->second.length());
-                cl.push_back(16);
-                cl.push_back(count-4);
-            }
-            else{
-                int repeat = 0;
-                while((count) > 6){
-                    repeat++;
-                    count -= 6;
-                }
-                cl.push_back(i->second.length());
-                for(int k = 0; k< repeat; k++){
-                    cl.push_back(16);
-                    cl.push_back(6);
-                }
-                if(count < 4){
-                for(int j = 0; j < count; j++){
-                    cl.push_back(i->second.length());
-                }
-                }else{
-                    cl.push_back(i->second.length());
-                    cl.push_back(16);
-                    cl.push_back(count-4);
-                }
-            }
+std::vector<u32> CLenstream(std::map<u32, std::string> LL_code_lengths, std::map<u32, std::string> D_code_lengths){
+    std::vector<u32> cl;
+    for(int i = 0; i<284; i++){
+        if(LL_code_lengths.find(i) != LL_code_lengths.end()){
+            cl.push_back((u32)LL_code_lengths.at(i).length());
         }else{
-            cl.push_back(i->second.length());
-            if(next->first != i->first+1&& end_flag != 1){
-                u32 zeros = next->first -i->first;
-                if(zeros >= 3){
-                    if(zeros <= 10){
-                        cl.push_back(17);
-                        cl.push_back(zeros-3);
-                    }else if(zeros <= 138){
-                        cl.push_back(18);
-                        cl.push_back(zeros-11);
-                    }else{
-                        u32 temp = zeros;
-                        int count = 0;
-                        while((temp) > 138){
-                            count++;
-                            temp -= 138;
-                        }
-                        for(int k = 0; k< count; k++){
-                            cl.push_back(18);
-                            cl.push_back(127);
-                        }
-                        if(temp < 3){
-                            for(u32 k = 0; k < temp; k++){
-                                cl.push_back(0);
-                            }
-                        }else if(temp <= 10){
-                            cl.push_back(17);
-                            cl.push_back(temp-3);
-                        }else{
-                            cl.push_back(18);
-                            cl.push_back(temp-11);
-                        }
-                    }
-                }
-                else{
-                    for(u32 k = 0; k< zeros; k++){
-                        cl.push_back(0);
-                    }
-                }
-            }
-        }
-        if(end_flag == 1){
-            break;
+            cl.push_back(0);
         }
     }
-    if(L_or_D){
-        if(last_entry->first < 285){
-            u32 zeros = 285 - last_entry->first;
-            if(zeros >= 3){
-                if(zeros <= 10){
-                    cl.push_back(17);
-                    cl.push_back(zeros-3);
-                }else if(zeros <= 138){
-                    cl.push_back(18);
-                    cl.push_back(zeros-11);
-                }else{
-                    u32 temp = zeros;
-                    int count = 0;
-                    while((temp) > 138){
-                        count++;
-                        temp -= 138;
-                    }
-                    for(int k = 0; k< count; k++){
-                        cl.push_back(18);
-                        cl.push_back(127);
-                    }
-                    if(temp < 3){
-                        for(u32 k = 0; k < temp; k++){
-                            cl.push_back(0);
-                        }
-                    }else if(temp <= 10){
-                        cl.push_back(17);
-                        cl.push_back(temp-3);
-                    }else{
-                        cl.push_back(18);
-                        cl.push_back(temp-11);
-                    }
-                }
-            }
-            else{
-                for(u32 k = 0; k< zeros; k++){
-                    cl.push_back(0);
-                }
-            }
-        }
-    }else{
-        if(last_entry->first < 29){
-            u32 zeros = 29 - last_entry->first;
-            if(zeros >= 3){
-                if(zeros <= 10){
-                    cl.push_back(17);
-                    cl.push_back(zeros-3);
-                }else{
-                    cl.push_back(18);
-                    cl.push_back(zeros-11);
-                }
-            }
-            else{
-                for(u32 k = 0; k< zeros; k++){
-                    cl.push_back(0);
-                }
-            }
+    cl.push_back(LL_code_lengths.at(285).length());
+    for(int i = 0; i< 30; i++){
+        if(D_code_lengths.find(i) != D_code_lengths.end()){
+             cl.push_back((u32)D_code_lengths.at(i).length());
+        }else{
+            cl.push_back(0);
         }
     }
     return cl;
 }
 
 void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, std::map<u32, std::string> Freq, std::map<u32, std::string> Dist, std::unordered_map<int, std::tuple<u32,int, u32>>Length, std::unordered_map<int, std::tuple<u32,int, u32>> Distance){
-    std::vector<u32> Freq_CL = CLenstream(Freq, true);
-    std::vector<u32> Dist_CL = CLenstream(Dist, false);
+    std::vector<u32> CL = CLenstream(Freq, Dist);
     std::unordered_map<std::string, int> CL_Prefix{};
-    int size_freq = Freq_CL.size();
-    for(int i = 0; i< size_freq; i++){
-        if(CL_Prefix.find(std::to_string(Freq_CL.at(i))) != CL_Prefix.end()){
-            CL_Prefix.at(std::to_string(Freq_CL.at(i)))++;
+    for(auto i: CL){
+        if(CL_Prefix.find(std::to_string(i)) != CL_Prefix.end()){
+            CL_Prefix.at(std::to_string(i))++;
         }
         else{
-            CL_Prefix.insert({std::to_string(Freq_CL.at(i)),1});
-        }
-        if(Freq_CL.at(i) == 16|| Freq_CL.at(i) == 17 || Freq_CL.at(i) == 18){
-            i++;
-        }
-    }
-    int size_dist = Dist_CL.size();
-    for(int i=0 ;i <size_dist; i++){
-        if(CL_Prefix.find(std::to_string(Dist_CL.at(i))) != CL_Prefix.end()){
-            CL_Prefix.at(std::to_string(Dist_CL.at(i)))++;
-        }
-        else{
-            CL_Prefix.insert({std::to_string(Dist_CL.at(i)),1});
-        }
-        if(Dist_CL.at(i) == 16|| Dist_CL.at(i) == 17 || Dist_CL.at(i) == 18){
-            i++;
+            CL_Prefix.insert({std::to_string(i),1});
         }
     }
     std::map<u32, std::string> CC = HuffTree(CL_Prefix);
-    std::vector<u32> E_O = {16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
     if(buff.size() != MAX_BLOCK_SIZE){
         stream.push_bit(1);
     }else{
@@ -682,73 +506,42 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
     }
     stream.push_bits(2, 2);
     unsigned int HLIT = 286-257;
-
-    unsigned int HDIST = 0;
-    if (Dist_CL.size() == 0){
-        //Even if no distance codes are used, we are required to encode at least one.
-    }else{
-        HDIST = 32 - 1;
-    }
-
-
+    unsigned int HDIST = 30-1;
     unsigned int HCLEN = 15; // = 19 - 4 (since we will provide 19 CL codes, whether or not they get used)
     stream.push_bits(HLIT, 5);
     stream.push_bits(HDIST,5);
     stream.push_bits(HCLEN,4);
+    std::vector<u32> E_O = {16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
     for(auto i: E_O){
         if(CC.find(i) != CC.end()){
-            stream.push_bits((u32)CC[i].length(), 3);
+            stream.push_bits((int)CC[i].length(), 3);
         }else{
-            stream.push_bits(0, 3);
+             stream.push_bits(0, 3);
         }
     }
-    int size = Freq_CL.size();
-    for(int i = 0; i< size ; i++){
-        std::string output= CC.at(Freq_CL.at(i));
-        int counter = output.size();
+    for(auto i: CL){
+        std::string output= CC.at(i);
+        int counter = output.length();
         for(int j = counter -1 ; j>= 0; j--){
-            stream.push_bit((u32)output.at(j));
-        }
-        if(Freq_CL.at(i) == 16||Freq_CL.at(i) == 17||Freq_CL.at(i) == 18){
-            if(Freq_CL.at(i) == 16){
-                i++;
-                stream.push_bits(Freq_CL.at(i),2);
-            }else if(Freq_CL.at(i) == 17){
-                i++; 
-                stream.push_bits(Freq_CL.at(i),3);
+            if(output.at(j)== '1'){
+                stream.push_bit(1);
             }else{
-                i++; 
-                stream.push_bits(Freq_CL.at(i),7);
+                stream.push_bit(0);
             }
         }
     }
-    int dist_size = Dist_CL.size();
-    for (int i= 0; i< dist_size; i++){
-        std::string output = CC.at(Dist_CL.at(i));
-        int counter = output.size();
-        for(int j = counter -1 ; j>= 0; j--){
-            stream.push_bit((u32)output.at(j));
-        }
-        if(Dist_CL.at(i) == 16||Dist_CL.at(i) == 17||Dist_CL.at(i) == 18){
-            if(Dist_CL.at(i) == 16){
-                i++; 
-                stream.push_bits(Dist_CL.at(i),2);
-            }else if(Dist_CL.at(i) == 17){
-                i++; 
-                stream.push_bits(Dist_CL.at(i),3);
-            }else{
-                i++; 
-                stream.push_bits(Dist_CL.at(i),7);
-            }
-        }
-    }
+    buff.push_back("256");
     for(auto i: buff){
         int pos = i.find(":");
         if(pos== -1){
             int x = std::stoi(i);
-            std::string huffman = Freq.at((u32)x);
+            std::string huffman = Freq.at(x);
             for(int i = huffman.length()-1; i >= 0; i--){
-                stream.push_bit((int)huffman.at(i));
+                if(huffman.at(i)== '1'){
+                    stream.push_bit(1);
+                }else{
+                    stream.push_bit(0);
+                }
             }
         }
         else{
@@ -756,36 +549,40 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
             int distance_size;
             std::string temp1;
             for(int k= 0; k<pos; k++){
-                temp1 += i[k];
+                temp1 += i.at(k);
             }
             length_size = std::stoi(temp1);
             int size_str = i.length();
             std::string temp2;
             for(int k = pos+1; k<size_str; k++){
-                temp2 += i[k];
+                temp2 += i.at(k);
             }
             distance_size = std::stoi(temp2);
             std::tuple<u32, int, u32> LC = Length[length_size];
             std::tuple<u32, int, u32> DC = Distance[distance_size];
             std::string huffman_code = Freq.at(std::get<0>(LC));
             for(int i = huffman_code.length()-1; i>= 0; i--){
-                stream.push_bit((int)huffman_code.at(i));
+                if(huffman_code.at(i)== '1'){
+                    stream.push_bit(1);
+                }else{
+                    stream.push_bit(0);
+                }
             }
             if(std::get<1>(LC) != 0){
                 stream.push_bits(std::get<2>(LC), std::get<1>(LC));    
             }
             std::string Distance_code = Dist.at(std::get<0>(DC));
             for(int i = Distance_code.length()-1; i>= 0; i--){
-                stream.push_bit((int)Distance_code.at(i));
+                if(Distance_code.at(i)== '1'){
+                    stream.push_bit(1);
+                }else{
+                    stream.push_bit(0);
+                }
             }
             if(std::get<1>(DC) != 0){
                 stream.push_bits(std::get<2>(DC), std::get<1>(DC));
             }
         }
-    }
-    std::string code = Freq.at(256);
-    for(int i = code.length()-1; i>= 0; i--){
-        stream.push_bit((int)code.at(i));
     }
 }
 
@@ -970,7 +767,24 @@ int main(){
         while(!look_ahead.empty()){
             Search(back_ref,buffer, look_ahead);
             if(buffer.size() == MAX_BLOCK_SIZE){
-                Type1BlockOffload(stream, buffer, Length_Codes, Distance_Codes);
+                std::pair<std::unordered_map<std::string, int>,std::unordered_map<std::string, int>> results = FreqDist(buffer, Length_Codes, Distance_Codes);
+                std::unordered_map<std::string, int> Freq = std::get<0>(results);
+                std::unordered_map<std::string, int> Dist = std::get<1>(results);
+                std::map<u32, std::string> Freq_mapping = HuffTree(Freq);
+                int red_flag = 0;
+                for(auto i: Freq_mapping){
+                    if(std::get<1>(i).length() > 15){
+                        red_flag = 1;
+                        break;
+                    }
+                }
+                if(red_flag == 1){
+                    Type1BlockOffload(stream, buffer,Length_Codes, Distance_Codes);
+                }
+                else{
+                    std::map<u32, std::string> Dist_mapping = HuffTree(Dist);
+                    Type2BlockOffload(stream,buffer, Freq_mapping, Dist_mapping, Length_Codes, Distance_Codes);
+                }
                 buffer.clear();
             }
         }
