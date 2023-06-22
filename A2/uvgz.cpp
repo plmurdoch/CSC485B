@@ -16,7 +16,7 @@
 #include <queue>
 #include <map>
 #include <cassert>
-
+#include <cmath>
 // To compute CRC32 values, we can use this library
 // from https://github.com/d-bahr/CRCpp
 #define CRCPP_USE_CPP11
@@ -417,56 +417,72 @@ struct comp{
         return(left->info.second >right->info.second);
     }
 };
-void CodesType2(Node* root, std::string code, std::map<u32, std::string> &T2codes){
+void CodesType2(Node* root, std::string code, std::map<std::string, u32> &T2codes){
     if(root == NULL){
         return;
     }
     if(!root->left &&!root->right){
-        T2codes.insert({(u32)stoi(root->info.first), code});
+        T2codes.insert({code,(u32)stoi(root->info.first)});
     }
     CodesType2(root->left, code+"0", T2codes);
     CodesType2(root->right,code+"1", T2codes);
 }
-
+//Cannot use lengths as keys as it will delete entries, find another way to organize this map so that it is smallest to largest in string size;
+std::map<u32, std::string> Canonical_Codes(std::map<std::string, u32> code_lengths){
+    std::vector<std::pair<std::string, u32>> small;
+    std::map<u32, std::string> assign = {};
+    u32 height = 0;
+    for(auto i: code_lengths){
+        if(height < i.first.length()){
+            height = i.first.length();
+        }
+    }
+    u32 bit = 0; 
+    for(auto i: code_lengths){
+        if(i.first != 0){
+            std::vector <int> bits = BitStream(bit, height);
+            int count_code =  height - (height-i.first +1);
+            int counter = height- 1;
+            std::string p = "";
+            for(int i = 0; i< count_code; i++){
+                p+=std::to_string(bits.at(counter));
+                counter--;
+            }
+            p+=std::to_string(bits.at(counter));
+            assign.insert({i.second, p});
+            bit += pow(2,height-i.first);
+        }
+    }
+    return assign;
+}
+ 
 std::map<u32, std::string> HuffTree(std::unordered_map<std::string, int> table){
     Node *left, *right, *top;
     std::priority_queue<Node*, std::vector<Node*>, comp> minimum_queue;
     for(auto i:table){
+        std::cerr<< i.first<<std::endl;
         minimum_queue.push(new Node(std::make_pair(i.first, i.second)));
     }
     if(minimum_queue.size() == 1){
-        minimum_queue.push(new Node(std::make_pair(std::to_string(0),0)));
+        Node *temp = minimum_queue.top();
+        minimum_queue.push(new Node(std::make_pair(temp->info.first,0)));
     }
     while(minimum_queue.size() > 1){
         right = minimum_queue.top();
+        std::cerr<<right->info.first<<":";
         minimum_queue.pop();
         left = minimum_queue.top();
+        std::cerr<<left->info.first<<std::endl;
         minimum_queue.pop();
         top = new Node(std::make_pair("EMPTY",left->info.second +right->info.second));
-        if(left->info.second == right->info.second){
-            if(left->info.first != "EMPTY"&& right->info.first != "EMPTY"){
-                int lt = std::stoi(left->info.first);
-                int rt = std::stoi(right->info.first);
-                if(lt > rt){
-                    Node * temp = left;
-                    left = right;
-                    right = temp;
-                }
-            }else{
-                if(right->info.first != "EMPTY"){
-                    Node* temp = left;
-                    left = right;
-                    right = temp;
-                }
-            }
-        }
         top->left = left;
         top->right = right;
         minimum_queue.push(top);
     }
-    std::map<u32, std::string> codes {};
+    std::map<std::string, u32> codes {};
     CodesType2(top, "", codes);
-    return codes;
+    std::map<u32, std::string> new_codes = Canonical_Codes(codes);
+    return new_codes;
 }
 std::vector<u32> CLenstream(std::map<u32, std::string> LL_code_lengths, std::map<u32, std::string> D_code_lengths){
     std::vector<u32> cl;
@@ -477,7 +493,6 @@ std::vector<u32> CLenstream(std::map<u32, std::string> LL_code_lengths, std::map
             cl.push_back(0);
         }
     }
-    assert(cl.size() == 286);
     for(int i = 0; i< 30; i++){
         if(D_code_lengths.find(i) != D_code_lengths.end()){
              cl.push_back((u32)D_code_lengths.at(i).length());
@@ -485,7 +500,6 @@ std::vector<u32> CLenstream(std::map<u32, std::string> LL_code_lengths, std::map
             cl.push_back(0);
         }
     }
-    assert(cl.size() == 286 + 30);
     return cl;
 }
 
@@ -523,6 +537,8 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
     }
 
     int k = 0;
+    for(auto k:CC){
+    }
     for(auto i: CL){
         std::string output= CC.at(i);
         int counter = output.length();
@@ -542,7 +558,8 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
         if(pos== -1){
             int x = std::stoi(i);
             std::string huffman = Freq.at(x);
-            for(int i = 0; i < huffman.length(); i++){
+            int Freq_count = huffman.length();
+            for(int i = 0; i < Freq_count; i++){
                 if(huffman.at(i)== '1'){
                     stream.push_bit(1);
                 }else{
@@ -567,7 +584,8 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
             std::tuple<u32, int, u32> LC = Length[length_size];
             std::tuple<u32, int, u32> DC = Distance[distance_size];
             std::string huffman_code = Freq.at(std::get<0>(LC));
-            for(int i = 0; i < huffman_code.length(); i++){
+            int huff_count =huffman_code.length();
+            for(int i = 0; i < huff_count; i++){
                 if(huffman_code.at(i)== '1'){
                     stream.push_bit(1);
                 }else{
@@ -578,7 +596,8 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
                 stream.push_bits(std::get<2>(LC), std::get<1>(LC));    
             }
             std::string Distance_code = Dist.at(std::get<0>(DC));
-            for(int i = Distance_code.length()-1; i>= 0; i--){
+            int dist_count = Distance_code.length();
+            for(int i = 0; i< dist_count; i++){
                 if(Distance_code.at(i)== '1'){
                     stream.push_bit(1);
                 }else{
