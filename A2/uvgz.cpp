@@ -417,31 +417,55 @@ struct comp{
         return(left->info.second >right->info.second);
     }
 };
-void CodesType2(Node* root, std::string code, std::map<std::string, u32> &T2codes){
+void CodesType2(Node* root, std::string code, std::map<u32, std::string> &T2codes){
     if(root == NULL){
         return;
     }
     if(!root->left &&!root->right){
-        T2codes.insert({code,(u32)stoi(root->info.first)});
+        T2codes.insert({(u32)stoi(root->info.first),code});
     }
     CodesType2(root->left, code+"0", T2codes);
     CodesType2(root->right,code+"1", T2codes);
 }
+struct Canonical{
+    u32 id;
+    int string_size;
+
+    Canonical(const u32 id, int string_size){
+        this->id =id;
+        this->string_size = string_size; 
+    }
+};
+struct compare{
+    bool operator()(Canonical* a,Canonical* b){
+        if(a->string_size == b->string_size){
+            return (a->id > b->id);
+        }
+        else{
+            return(a->string_size > b->string_size);
+        }
+    }
+};
 //Cannot use lengths as keys as it will delete entries, find another way to organize this map so that it is smallest to largest in string size;
-std::map<u32, std::string> Canonical_Codes(std::map<std::string, u32> code_lengths){
-    std::vector<std::pair<std::string, u32>> small;
+std::map<u32, std::string> Canonical_Codes(std::map<u32,std::string> &code_lengths){
+    std::priority_queue<Canonical*, std::vector<Canonical*>, compare> minimum_queue;
+    for(auto i: code_lengths){
+        minimum_queue.push(new Canonical(i.first, i.second.length()));
+    }
     std::map<u32, std::string> assign = {};
     u32 height = 0;
     for(auto i: code_lengths){
-        if(height < i.first.length()){
-            height = i.first.length();
+        if(height < i.second.length()){
+            height = i.second.length();
         }
     }
     u32 bit = 0; 
-    for(auto i: code_lengths){
-        if(i.first != 0){
+    while(minimum_queue.size() != 0){
+        Canonical* min = minimum_queue.top();
+        minimum_queue.pop();
+        if(min->string_size != 0){
             std::vector <int> bits = BitStream(bit, height);
-            int count_code =  height - (height-i.first +1);
+            int count_code =  height - (height-min->string_size +1);
             int counter = height- 1;
             std::string p = "";
             for(int i = 0; i< count_code; i++){
@@ -449,8 +473,8 @@ std::map<u32, std::string> Canonical_Codes(std::map<std::string, u32> code_lengt
                 counter--;
             }
             p+=std::to_string(bits.at(counter));
-            assign.insert({i.second, p});
-            bit += pow(2,height-i.first);
+            assign.insert({min->id, p});
+            bit += pow(2,height-min->string_size);
         }
     }
     return assign;
@@ -460,7 +484,6 @@ std::map<u32, std::string> HuffTree(std::unordered_map<std::string, int> table){
     Node *left, *right, *top;
     std::priority_queue<Node*, std::vector<Node*>, comp> minimum_queue;
     for(auto i:table){
-        std::cerr<< i.first<<std::endl;
         minimum_queue.push(new Node(std::make_pair(i.first, i.second)));
     }
     if(minimum_queue.size() == 1){
@@ -469,17 +492,15 @@ std::map<u32, std::string> HuffTree(std::unordered_map<std::string, int> table){
     }
     while(minimum_queue.size() > 1){
         right = minimum_queue.top();
-        std::cerr<<right->info.first<<":";
         minimum_queue.pop();
         left = minimum_queue.top();
-        std::cerr<<left->info.first<<std::endl;
         minimum_queue.pop();
         top = new Node(std::make_pair("EMPTY",left->info.second +right->info.second));
         top->left = left;
         top->right = right;
         minimum_queue.push(top);
     }
-    std::map<std::string, u32> codes {};
+    std::map<u32, std::string> codes {};
     CodesType2(top, "", codes);
     std::map<u32, std::string> new_codes = Canonical_Codes(codes);
     return new_codes;
@@ -542,7 +563,6 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
     for(auto i: CL){
         std::string output= CC.at(i);
         int counter = output.length();
-        //std::cerr << "LL/Dist table: " << k << ": " << i << " [" << output << "] " << counter << std::endl;
         for(int j = 0; j < counter; j++){
             if(output.at(j)== '1'){
                 stream.push_bit(1);
