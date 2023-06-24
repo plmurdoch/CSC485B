@@ -23,6 +23,7 @@
 #include "CRC.h"
 #define MAX_BLOCK_SIZE 100000
 #define MAX_BACK_REF 32768
+#define MIN_BLOCK_SIZE 50
 
 void BlockType0(OutputBitStream stream, u32 &block_size, std::array<u8, (1<<16)-1> &block_contents){
     if (block_size == block_contents.size()){
@@ -557,11 +558,9 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
         }
     }
 
-    int k = 0;
-    for(auto k:CC){
-    }
     for(auto i: CL){
         std::string output= CC.at(i);
+        //std::cerr<< i<<":"<<output<<std::endl;
         int counter = output.length();
         for(int j = 0; j < counter; j++){
             if(output.at(j)== '1'){
@@ -570,7 +569,6 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
                 stream.push_bit(0);
             }
         }
-        k += 1;
     }
     buff.push_back("256");
     for(auto i: buff){
@@ -723,6 +721,7 @@ int main(){
     std::vector<std::string> buffer {};
     char next_byte {}; //Note that we have to use a (signed) char here for compatibility with istream::get()
     int incompressible = 0;
+    int last_block = 0;
     //We need to see ahead of the stream by one character (e.g. to know, once we fill up a block,
     //whether there are more blocks coming), so at each step, next_byte will be the next byte from the stream
     //that is NOT in a block.
@@ -788,23 +787,25 @@ int main(){
                 std::map<u32, std::string> Freq_mapping = HuffTree(Freq);
                 int red_flag = 0;
                 for(auto i: Freq_mapping){
-                    if(std::get<1>(i).length() > 15){
+                    if(std::get<1>(i).length() > 14){
                         red_flag = 1;
                         break;
                     }
                 }
                 if(red_flag == 1){
-                    Type1BlockOffload(stream, buffer,Length_Codes, Distance_Codes);
+                    Type1BlockOffload(stream, buffer,Length_Codes, Distance_Codes); 
+                    last_block = 1;
                 }
                 else{
                     std::map<u32, std::string> Dist_mapping = HuffTree(Dist);
                     Type2BlockOffload(stream,buffer, Freq_mapping, Dist_mapping, Length_Codes, Distance_Codes);
+                    last_block = 0;
                 }
                 buffer.clear();
             }
         }
     }
-    if(block_size > 0 && incompressible == 1){
+    if(block_size > 0 && incompressible == 1 ){
         BlockType0(stream, block_size, block_contents);
         buffer.clear();
     }
@@ -818,17 +819,19 @@ int main(){
                 std::map<u32, std::string> Freq_mapping = HuffTree(Freq);
                 int red_flag = 0;
                 for(auto i: Freq_mapping){
-                    if(std::get<1>(i).length() > 15){
+                    if(std::get<1>(i).length() > 14){
                         red_flag = 1;
                         break;
                     }
                 }
                 if(red_flag == 1){
                     Type1BlockOffload(stream, buffer,Length_Codes, Distance_Codes);
+                    last_block = 1;
                 }
                 else{
                     std::map<u32, std::string> Dist_mapping = HuffTree(Dist);
                     Type2BlockOffload(stream,buffer, Freq_mapping, Dist_mapping, Length_Codes, Distance_Codes);
+                    last_block = 0;
                 }
                 buffer.clear();
             }
@@ -842,12 +845,12 @@ int main(){
         std::map<u32, std::string> mapping_freq = HuffTree(Freq);
         int red_flag = 0;
         for(auto i: mapping_freq){
-            if(std::get<1>(i).length() > 15){
+            if(std::get<1>(i).length() > 14){
                 red_flag = 1;
                 break;
             }
         }
-        if(red_flag == 1){
+        if(red_flag == 1 || buffer.size() < MIN_BLOCK_SIZE || last_block == 1){
             Type1BlockOffload(stream, buffer,Length_Codes, Distance_Codes);
         }
         else{
