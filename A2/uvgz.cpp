@@ -1,10 +1,10 @@
 /* uvgz.cpp
 
    Starter code for Assignment 2 (in C++).
-   This basic implementation generates a fully compliant .gz output stream,
-   using block mode 0 (store only) for all DEFLATE data.
-
-   B. Bird - 2023-05-12
+   Provided by:
+   B. Bird - 2023-05-12.
+   Assignment completed by: Payton Larsen Murdoch.
+   Student number: V00904677
 */
 #include <iostream>
 #include <vector>
@@ -21,30 +21,33 @@
 // from https://github.com/d-bahr/CRCpp
 #define CRCPP_USE_CPP11
 #include "CRC.h"
-#define MAX_BLOCK_SIZE 100000
-#define MAX_BACK_REF 32768
-#define MIN_BLOCK_SIZE 50
+#define MAX_BLOCK_SIZE 100000 //Max bytes read for type 1 and type 2 outputs
+#define MAX_BACK_REF 32768    //Max Back Reference size to work with 
+#define MIN_BLOCK_SIZE 50     //If a block is smaller than this size output type 1 as it would result in more compression.
+#define BACK_REF_LENGTH 5     //Set restriction to end linear search once Length/Distance passes this size.
 
+/*
+BlockType0 was provided by Professor B. Bird and to allow for literals output, code only outputs type 1 when uncompressible literals are detected.
+*/
 void BlockType0(OutputBitStream stream, u32 &block_size, std::array<u8, (1<<16)-1> &block_contents){
     if (block_size == block_contents.size()){
-        //The block is full, so write it out.
-        //We know that there are more bytes left, so this is not the last block
-        stream.push_bit(0); //0 = not last block
+        stream.push_bit(0);
     }else{
-        //Write out any leftover data
-        stream.push_bit(1); //0 = not last block
+        stream.push_bit(1);
     }
-    stream.push_bits(0, 2); //Two bit block type (in this case, block type 0)
-    stream.push_bits(0, 5); //Pad the stream to the next byte boundary.
-    //Now write the block size (as a pair (X, ~X) where X is the 16 bit size)
+    stream.push_bits(0, 2);
+    stream.push_bits(0, 5);
     stream.push_u16(block_size);
     stream.push_u16(~block_size);
-    //Now write the actual block data
     for(unsigned int i = 0; i < block_size; i++)
-        stream.push_byte(block_contents.at(i)); //Interesting optimization question: Will the compiler optimize away the bounds checking for .at here?
+        stream.push_byte(block_contents.at(i));
     block_size = 0;
     stream.flush_to_byte();
 }
+/*
+LengthCode function implements an unordered map which is preoccupied with the actual integers
+mapped to the Length codes, number of bits and offsets stored as a tuple. 
+*/
 std::unordered_map<int, std::tuple<u32, int, u32>> LengthCode(){
     std::unordered_map<int, std::tuple<u32,int,u32>> return_map;
     u32 code = 257;
@@ -125,6 +128,10 @@ std::unordered_map<int, std::tuple<u32, int, u32>> LengthCode(){
     }
     return return_map;
 }
+/*
+DistanceCode function implements an unordered map which is preoccupied with the actual integers
+mapped to the Distance codes, number of bits and offsets stored as a tuple. 
+*/
 std::unordered_map<int, std::tuple<u32,int, u32>> DistanceCode(){
     std::unordered_map<int, std::tuple<u32,int,u32>> return_map;
     u32 code = 0;
@@ -279,6 +286,10 @@ std::unordered_map<int, std::tuple<u32,int, u32>> DistanceCode(){
     }
     return return_map;
 }
+
+/*
+FixedHuffman function takes the integer code of the length/literal and returns the type 1 code it utilizes.
+*/
 std::pair<u32, int> FixedHuffman(int Code){
     u32 Lit_to_143 = 48;
     u32 Lit_to_255 = 400;
@@ -297,6 +308,11 @@ std::pair<u32, int> FixedHuffman(int Code){
     }
 }
 
+/*
+BitStream takes an integer and size and returns a vector of size
+made up of 0s and 1s to represent the binary representation of the integer
+stored least significant bit first. 
+*/
 std::vector<int> BitStream(u32 integer, int size){
     std::vector<int> bit_stream {};
     u32 j = integer;
@@ -307,6 +323,9 @@ std::vector<int> BitStream(u32 integer, int size){
     return bit_stream;
 }
 
+/*
+Type1BlockOffload takes the stream, buffer, Length codes and Distance codes as input and outputs the stream as type 1 huffman codes.
+*/
 void Type1BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, std::unordered_map<int, std::tuple<u32,int, u32>>Length, std::unordered_map<int, std::tuple<u32,int, u32>> Distance){
     if (buff.size() == MAX_BLOCK_SIZE){
         stream.push_bit(0);
@@ -360,6 +379,10 @@ void Type1BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
     stream.push_bits(0,7);
 }
 
+/*
+FreqDist parses the buffer and identifies LL frequencies and distance frequencies and stores them as unordered maps.
+It returns the maps as a pair.
+*/
 std::pair<std::unordered_map<std::string, int>,std::unordered_map<std::string, int>> FreqDist(std::vector<std::string> buffer, std::unordered_map<int, std::tuple<u32, int, u32>> lengths, std::unordered_map<int, std::tuple<u32, int, u32>> distances){
     std::unordered_map<std::string, int> dist {};
     std::unordered_map<std::string, int> freq {};
@@ -404,39 +427,67 @@ std::pair<std::unordered_map<std::string, int>,std::unordered_map<std::string, i
     freq.insert({std::to_string(256),1});
     return std::make_pair(freq,dist);
 }
+/*
+Node struct, comp struct, CodeType2 and Hufftree functions were inspired by https://www.geeksforgeeks.org/huffman-coding-greedy-algo-3/ 
+this article was written by Aashish Barnwal and the GeeksforGeeks team.
+The code provided in that site is referenced in lines 435-470 and 524-548 to assist in generating length values to be utilized in the Canonical coding algorithm.
+*/
+
+/*
+Node structure with pointers to its children and contains the pair of LL/distance codes and frequency symbols.
+*/
 struct Node{
     std::pair<std::string, int> info;
-    struct Node *left, *right;
+    struct Node *left_child, *right_child;
 
     Node(std::pair<std::string, int> info){
         this->info =info;
-        left = right = NULL; 
+        left_child = right_child = NULL; 
     }
 };
-struct comp{
+
+/*
+Min structure to be used by the priority queue as a comparator to 
+push the minimum values to the top.
+*/
+struct min{
     bool operator()(Node* left, Node* right){
         return(left->info.second >right->info.second);
     }
 };
-void CodesType2(Node* root, std::string code, std::map<u32, std::string> &T2codes){
+
+/*
+CodesType2 navigates the tree and increments the code integer in a recursive loop, 
+when it reaches a leaf node node 
+*/
+void CodesType2(Node* root, int code, std::map<u32, u32> &T2codes){
     if(root == NULL){
         return;
     }
-    if(!root->left &&!root->right){
+    if(!root->left_child &&!root->right_child){
         T2codes.insert({(u32)stoi(root->info.first),code});
     }
-    CodesType2(root->left, code+"0", T2codes);
-    CodesType2(root->right,code+"1", T2codes);
+    CodesType2(root->left_child, code+1, T2codes);
+    CodesType2(root->right_child,code+1, T2codes);
 }
+
+/*
+Canonical structure is used by the canonical coding algorithm to sort a priority queue of lengths.
+*/
 struct Canonical{
     u32 id;
     int string_size;
 
-    Canonical(const u32 id, int string_size){
+    Canonical(const u32 id, u32 string_size){
         this->id =id;
         this->string_size = string_size; 
     }
 };
+
+/*
+Compare function utilized to compare canonical structs a and b by lengths,
+if they are of equal size then the smaller Ascii character goes first.
+*/
 struct compare{
     bool operator()(Canonical* a,Canonical* b){
         if(a->string_size == b->string_size){
@@ -447,17 +498,20 @@ struct compare{
         }
     }
 };
-//Cannot use lengths as keys as it will delete entries, find another way to organize this map so that it is smallest to largest in string size;
-std::map<u32, std::string> Canonical_Codes(std::map<u32,std::string> &code_lengths){
+
+/*
+Canonical Codes algorithm generates the corresponding codes for each length code.
+*/
+std::map<u32, std::string> Canonical_Codes(std::map<u32,u32> &code_lengths){
     std::priority_queue<Canonical*, std::vector<Canonical*>, compare> minimum_queue;
     for(auto i: code_lengths){
-        minimum_queue.push(new Canonical(i.first, i.second.length()));
+        minimum_queue.push(new Canonical(i.first, i.second));
     }
     std::map<u32, std::string> assign = {};
     u32 height = 0;
     for(auto i: code_lengths){
-        if(height < i.second.length()){
-            height = i.second.length();
+        if(height < i.second){
+            height = i.second;
         }
     }
     u32 bit = 0; 
@@ -480,10 +534,14 @@ std::map<u32, std::string> Canonical_Codes(std::map<u32,std::string> &code_lengt
     }
     return assign;
 }
- 
+
+/*
+HuffTree generates a huffman tree using the input table, after generation of the tree
+the lengths of corresponding symbols are passed to the Canonical codes algorithm to be computed and returned.
+*/
 std::map<u32, std::string> HuffTree(std::unordered_map<std::string, int> table){
-    Node *left, *right, *top;
-    std::priority_queue<Node*, std::vector<Node*>, comp> minimum_queue;
+    Node *left, *right, *root;
+    std::priority_queue<Node*, std::vector<Node*>, min> minimum_queue;
     for(auto i:table){
         minimum_queue.push(new Node(std::make_pair(i.first, i.second)));
     }
@@ -496,16 +554,20 @@ std::map<u32, std::string> HuffTree(std::unordered_map<std::string, int> table){
         minimum_queue.pop();
         left = minimum_queue.top();
         minimum_queue.pop();
-        top = new Node(std::make_pair("EMPTY",left->info.second +right->info.second));
-        top->left = left;
-        top->right = right;
-        minimum_queue.push(top);
+        root = new Node(std::make_pair("EMPTY",left->info.second +right->info.second));
+        root->left_child = left;
+        root->right_child = right;
+        minimum_queue.push(root);
     }
-    std::map<u32, std::string> codes {};
-    CodesType2(top, "", codes);
+    std::map<u32, u32> codes {};
+    CodesType2(root, 0, codes);
     std::map<u32, std::string> new_codes = Canonical_Codes(codes);
     return new_codes;
 }
+
+/*
+Canonical code lengths for LL and distances are then passed to the CLenstream so that it can inform the decoder.
+*/
 std::vector<u32> CLenstream(std::map<u32, std::string> LL_code_lengths, std::map<u32, std::string> D_code_lengths){
     std::vector<u32> cl;
     for(int i = 0; i<286; i++){
@@ -525,6 +587,11 @@ std::vector<u32> CLenstream(std::map<u32, std::string> LL_code_lengths, std::map
     return cl;
 }
 
+/*
+Block Type 2 Offloading function recieves the stream, buffer, LL and dist frequency codes, and Length and distance offset codes.
+CL encodings in header purposefully exclude RLE encodings to prioritize generating correct outputs therefore large .
+Bitstream block almost exactly the same to Block Type 1 output.
+*/
 void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, std::map<u32, std::string> Freq, std::map<u32, std::string> Dist, std::unordered_map<int, std::tuple<u32,int, u32>>Length, std::unordered_map<int, std::tuple<u32,int, u32>> Distance){
     std::vector<u32> CL = CLenstream(Freq, Dist);
     std::unordered_map<std::string, int> CL_Prefix{};
@@ -545,7 +612,7 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
     stream.push_bits(2, 2);
     unsigned int HLIT = 286-257;
     unsigned int HDIST = 30-1;
-    unsigned int HCLEN = 15; // = 19 - 4 (since we will provide 19 CL codes, whether or not they get used)
+    unsigned int HCLEN = 15; 
     stream.push_bits(HLIT, 5);
     stream.push_bits(HDIST,5);
     stream.push_bits(HCLEN,4);
@@ -560,7 +627,6 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
 
     for(auto i: CL){
         std::string output= CC.at(i);
-        //std::cerr<< i<<":"<<output<<std::endl;
         int counter = output.length();
         for(int j = 0; j < counter; j++){
             if(output.at(j)== '1'){
@@ -629,6 +695,11 @@ void Type2BlockOffload(OutputBitStream &stream, std::vector<std::string> &buff, 
     }
 }
 
+/*
+Search function utilizes a linear search to scan through the back reference vector and look ahead vector to find length distance pairs
+that meet the minimum requirement length (denoted greater than 5).
+Minimum requirement length restriction lowers the overall compression rate, however, improves speed to meet under 240 second compression for dataset.  
+*/
 void Search(std::vector<u8> &back_ref, std::vector<std::string>&buffer, std::vector<u8> &look_ahead){
     int counter = back_ref.size() -1;
     if(counter <0){
@@ -661,6 +732,9 @@ void Search(std::vector<u8> &back_ref, std::vector<std::string>&buffer, std::vec
             if(longest_length_hit < longest_hit){
                 longest_length_hit = longest_hit;
                 longest_pos = pos;
+                if(longest_length_hit > BACK_REF_LENGTH){
+                    break;
+                }
             }
             counter--;
         }
@@ -691,10 +765,8 @@ int main(){
     std::unordered_map<int, std::tuple<u32, int, u32>> Length_Codes = LengthCode();
     std::unordered_map<int, std::tuple<u32, int, u32>> Distance_Codes = DistanceCode();
     OutputBitStream stream {std::cout};
-
     //Pre-cache the CRC table
     auto crc_table = CRC::CRC_32().MakeTable();
-
     //Push a basic gzip header
     stream.push_bytes( 0x1f, 0x8b, //Magic Number
         0x08, //Compression (0x08 = DEFLATE)
@@ -703,15 +775,6 @@ int main(){
         0x00, //Extra flags
         0x03 //OS (Linux)
     );
-
-
-    //This starter implementation writes a series of blocks with type 0 (store only)
-    //Each store-only block can contain up to 2**16 - 1 bytes of data.
-    //(This limit does NOT apply to block types 1 and 2)
-    //Since we have to keep track of how big each block is (and whether any more blocks 
-    //follow it), we have to save up the data for each block in an array before writing it.
-    
-
     //Note that the types u8, u16 and u32 are defined in the output_stream.hpp header
     std::array< u8, (1<<16)-1 > block_contents {};
     std::vector<u8> back_ref;
@@ -719,20 +782,15 @@ int main(){
     u32 block_size {0};
     u32 bytes_read {0};
     std::vector<std::string> buffer {};
-    char next_byte {}; //Note that we have to use a (signed) char here for compatibility with istream::get()
+    char next_byte {}; 
     int incompressible = 0;
     int last_block = 0;
-    //We need to see ahead of the stream by one character (e.g. to know, once we fill up a block,
-    //whether there are more blocks coming), so at each step, next_byte will be the next byte from the stream
-    //that is NOT in a block.
-
-    //Keep a running CRC of the data we read.
     u32 crc {};
 
 
     if (!std::cin.get(next_byte)){
-        //Empty input?
-        
+        std::cerr<<"Invalid Input Please Pipe in File to Compress"<<std::endl;
+        exit(1); 
     }else{
         bytes_read++;
         //Update the CRC as we read each byte (there are faster ways to do this)
@@ -740,17 +798,17 @@ int main(){
         //Read through the input
         while(1){
             if((u8)next_byte < 0 && incompressible == 0){
-                incompressible = 1;
+                incompressible = 1; //Incompressible means that it a byte is registering a non-ASCII value and will go into type 0 output. 
             }
             look_ahead.push_back(next_byte);
             block_contents.at(block_size++) = next_byte;
             if(look_ahead.size() == 258){
                 if( incompressible != 1){
-                    Search(back_ref, buffer, look_ahead);
+                    Search(back_ref, buffer, look_ahead); //If the lookahead is full, start looking and offloading into the buffer and back_ref.
                 }
                 else{
                     while(!look_ahead.empty()){
-                        if(back_ref.size()>=MAX_BACK_REF){
+                        if(back_ref.size()>=MAX_BACK_REF){ //Move up the back reference window if it is at the max size.
                            back_ref.erase(back_ref.begin());
                         }
                         back_ref.push_back(look_ahead.front());
@@ -765,10 +823,10 @@ int main(){
             crc = CRC::Calculate(&next_byte,1, crc_table, crc);
             if(block_size == block_contents.size()){
                 if(incompressible == 1){
-                    BlockType0(stream, block_size, block_contents);
+                    BlockType0(stream, block_size, block_contents); //If incompressible, clear out look_ahead and buffer and output literals.
                     buffer.clear();
                     while(!look_ahead.empty()){
-                        if(back_ref.size()>=MAX_BACK_REF){
+                        if(back_ref.size()>=MAX_BACK_REF){ //Move up the back reference window if it is at the max size.
                             back_ref.erase(back_ref.begin());
                         }
                         back_ref.push_back(look_ahead.front());
@@ -776,27 +834,27 @@ int main(){
                     }
                     incompressible = 0;
                 }else{
-                    block_size = 0;
+                    block_size = 0; //reset block_size and incompressible key.
                     incompressible = 0;
                 }
             }
-            if(buffer.size() == MAX_BLOCK_SIZE){
+            if(buffer.size() == MAX_BLOCK_SIZE){ //If buffer is big enough, start offloading to type 1 or 2.
                 std::pair<std::unordered_map<std::string, int>,std::unordered_map<std::string, int>> results = FreqDist(buffer, Length_Codes, Distance_Codes);
                 std::unordered_map<std::string, int> Freq = std::get<0>(results);
                 std::unordered_map<std::string, int> Dist = std::get<1>(results);
                 std::map<u32, std::string> Freq_mapping = HuffTree(Freq);
                 int red_flag = 0;
                 for(auto i: Freq_mapping){
-                    if(std::get<1>(i).length() > 14){
+                    if(std::get<1>(i).length() > 14){ //check to see if the height of the trees are small enough so that type 2 can be used.
                         red_flag = 1;
                         break;
                     }
                 }
-                if(red_flag == 1){
+                if(red_flag == 1){ //if height of the tree too big then go block type 1.
                     Type1BlockOffload(stream, buffer,Length_Codes, Distance_Codes); 
                     last_block = 1;
                 }
-                else{
+                else{ //or go block type 2.
                     std::map<u32, std::string> Dist_mapping = HuffTree(Dist);
                     Type2BlockOffload(stream,buffer, Freq_mapping, Dist_mapping, Length_Codes, Distance_Codes);
                     last_block = 0;
@@ -805,6 +863,7 @@ int main(){
             }
         }
     }
+    //Treating leftover look_ahead and buffer.
     if(block_size > 0 && incompressible == 1 ){
         BlockType0(stream, block_size, block_contents);
         buffer.clear();
