@@ -24,7 +24,7 @@
 #define MAX_BLOCK_SIZE 100000 //Max bytes read for type 1 and type 2 outputs
 #define MAX_BACK_REF 32768    //Max Back Reference size to work with 
 #define MIN_BLOCK_SIZE 50     //If a block is smaller than this size output type 1 as it would result in more compression.
-#define BACK_REF_LENGTH 5    //Set restriction to end linear search once Length/Distance passes this size.
+#define BACK_REF_LENGTH 5     //Set restriction to end linear search once Length/Distance passes this size.
 
 /*
 BlockType0 was provided by Professor B. Bird and to allow for literals output, code only outputs type 1 when uncompressible literals are detected.
@@ -458,7 +458,7 @@ struct min{
 
 /*
 CodesType2 navigates the tree and increments the code integer in a recursive loop, 
-when it reaches a leaf node node 
+when it reaches a leaf node increment the code integer and loop.
 */
 void CodesType2(Node* root, int code, std::map<u32, u32> &T2codes){
     if(root == NULL){
