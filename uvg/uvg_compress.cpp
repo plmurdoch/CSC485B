@@ -21,9 +21,44 @@
 #include <string>
 #include <cassert>
 #include <cstdint>
+#include <cmath>
 #include "output_stream.hpp"
 #include "bitmap_image.hpp"
 #include "uvg_common.hpp"
+
+double C_Calc(int c){
+    if(c == 0){
+        return (1/sqrt(2));
+    }else{
+        return 1;
+    }
+}
+
+void DCT(std::vector<std::vector<int>> matrix, int pix_row, int pix_col){
+    std::vector<std::vector<double>> DCT_matrix;
+    double result = 0.0;
+    int row_num = pix_row;
+    int col_num = pix_col;
+    for(int j = 0; j< 8; j++){ //Height
+        std::vector<double> G;
+        for(int i = 0; i<8; i++){//Width
+            double sum = 0.0;
+            for(int x = 0; x < 8; x++){
+                for(int y = 0; y < 8; y++){
+                    double pixel = matrix.at(x).at(y);
+                    double calc_1 = (C_Calc(row_num))*cos((M_PI*(2*x+1)*row_num)/16);
+                    double calc_2 = (C_Calc(col_num))*cos((M_PI*(2*y+1)*col_num)/16);
+                    sum += (pixel*calc_1*calc_2);
+                }
+            }
+            G.push_back((1/4)*sum);
+            col_num++;
+        }
+        DCT_matrix.push_back(G);
+        row_num++;
+    }
+
+}
 
 
 //A simple downscaling algorithm using averaging.
