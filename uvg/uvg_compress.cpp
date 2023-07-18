@@ -26,40 +26,87 @@
 #include "bitmap_image.hpp"
 #include "uvg_common.hpp"
 
-double C_Calc(int c){
-    if(c == 0){
-        return (1/sqrt(2));
-    }else{
-        return 1;
+//Make into matrix so that it only needs to be computed once instead of multiple computations and function calls.
+std::vector<std::vector<double>> Coeff(){
+    auto results = create_2d_vector<double>(8,8);
+    for(int i = 0; i < 8; i++){
+        for(int j = 0; j < 8; j++){
+            if(i = 0){
+                results.at(i).at(j) = sqrt((1/8));
+            }else{
+                results.at(i).at(j) = (sqrt((1/4))*cos((((2*j)+1)*i*M_PI)/16));
+            }
+        }
+    }
+    return results;
+}
+
+//Compute DCT(A) = matrix(C)*matrix(A)*matrix(C transpose) and store in results; 
+void DCT(std::vector<int> data, std::vector<std::vector<double>> c){
+    auto results = create_2d_vector<double>(8,8);
+    auto temp = create_2d_vector<double>(8,8);
+    for(int i = 0; i< 8; i++){
+        for(int j = 0; j<8; j++){
+            for(int x = 0; x<8; x++){
+                temp.at(i).at(j) += data.at(i).at(x)*c.at(x).at(j);
+            }
+        }
+    }
+    for(int i = 0; i< 8; i++){
+        for(int j = 0; j<8; j++){
+            for(int x = 0; x<8; x++){
+                results.at(i).at(j) += temp.at(i).at(x)*c.at(j).at(x);
+            }
+        }
     }
 }
 
-void DCT(std::vector<std::vector<int>> matrix, int pix_row, int pix_col){
-    std::vector<std::vector<double>> DCT_matrix;
-    double result = 0.0;
-    int row_num = pix_row;
-    int col_num = pix_col;
-    for(int j = 0; j< 8; j++){ //Height
-        std::vector<double> G;
-        for(int i = 0; i<8; i++){//Width
-            double sum = 0.0;
-            for(int x = 0; x < 8; x++){
-                for(int y = 0; y < 8; y++){
-                    double pixel = matrix.at(x).at(y);
-                    double calc_1 = (C_Calc(row_num))*cos((M_PI*(2*x+1)*row_num)/16);
-                    double calc_2 = (C_Calc(col_num))*cos((M_PI*(2*y+1)*col_num)/16);
-                    sum += (pixel*calc_1*calc_2);
+void blocks(std::vector<std::vector<PixelYCbCr>> data, int height, int width){
+    int recorded_x = 0;
+    int recorded_y = 0;
+    while(true){
+        auto temporary = create_2d_vector<int>(8,8);
+        std::vector<int> prev_row;
+        int prev = -1;
+        for(int i = 0; i<8; i++){
+            for(int j = 0; j < 8; j++){
+                if(recorded_y+i <=height){
+                    if(recorded_x+j <= width){
+                        temporary.at(i).at(j) = data.at(recorded_y+i).at(recorded_x+j);
+                        prev = temporary.at(i).at(j);
+                        if(prev_row.size() == 8){
+                            prev_row.clear();
+                        }
+                        prev_row.push_back(temporary.at(i).at(j));
+                    }else{
+                        if(prev != -1){
+                            temporary.at(i).at(j) = prev;
+                            prev_row.push_back(prev);
+                        }
+                        else{
+                            exit(1); //error no data
+                        }
+                    }
+                }else{
+                    for(int k = 0; k< 8; k++){
+                        temporary.at(i).at(k) = prev_row.at(k);
+                    }
                 }
             }
-            G.push_back((1/4)*sum);
-            col_num++;
         }
-        DCT_matrix.push_back(G);
-        row_num++;
+        //block matrix now available as temporary
+        if(recorded_x+8 > width){
+            if(recorded_y+8 > height){
+                break;
+            }else{
+                recorded_x = 0;
+                recorded_y += 8;
+            }
+        }else{
+            recorded_x += 8;
+        }
     }
-
 }
-
 
 //A simple downscaling algorithm using averaging.
 std::vector<std::vector<unsigned char> > scale_down(std::vector<std::vector<unsigned char> > source_image, unsigned int source_width, unsigned int source_height, int factor){
@@ -105,7 +152,6 @@ int main(int argc, char** argv){
     // must be accessed as imageRGB.at(y).at(x)).
     std::vector<std::vector<PixelYCbCr>> imageYCbCr = create_2d_vector<PixelYCbCr>(height,width);
 
-
     for(unsigned int y = 0; y < height; y++){
         for (unsigned int x = 0; x < width; x++){
             auto [r,g,b] = input_image.get_pixel(x,y);
@@ -124,8 +170,10 @@ int main(int argc, char** argv){
     output_stream.push_u32(width);
 
     //Write the Y values 
+     auto y_val = create_2d_vector<unsigned char>(height, width);
     for(unsigned int y = 0; y < height; y++)
         for (unsigned int x = 0; x < width; x++)
+            y_val.at(y).at(x) - imageYCbCr.at(y).at(x).Y;
             output_stream.push_byte(imageYCbCr.at(y).at(x).Y);
 
     //Extract the Cb plane into its own array 
