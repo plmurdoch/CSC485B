@@ -252,7 +252,7 @@ int main(int argc, char** argv){
     output_stream.push_u32(width);
 
     //Write the Y values 
-     auto y_val = create_2d_vector<unsigned char>(height, width);
+    auto y_val = create_2d_vector<unsigned char>(height, width);
     for(unsigned int y = 0; y < height; y++)
         for (unsigned int x = 0; x < width; x++)
             y_val.at(y).at(x) - imageYCbCr.at(y).at(x).Y;
