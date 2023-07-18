@@ -14,7 +14,10 @@
 
    B. Bird - 2023-07-03
 */
-
+//What to do, compression techniques
+//Check to see if we need to round and clamp DCT aswell.
+//Change Q_1 so that it records different quantums based on the quality setting.
+//Encoding is all we need with rudimentary techniques.
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -25,6 +28,18 @@
 #include "output_stream.hpp"
 #include "bitmap_image.hpp"
 #include "uvg_common.hpp"
+
+//Based on quality the quantum for Q_1 will become a changing value
+std::vector<std::vector<int>> Q_1 = {
+    {3,5,7,9,11,13,15,17},
+    {5,7,9,11,13,15,17,19},
+    {7,9,11,13,15,17,19,21},
+    {9,11,13,15,17,19,21,23},
+    {11,13,15,17,19,21,23,25},
+    {13,15,17,19,21,23,25,27},
+    {15,17,19,21,23,25,27,29},
+    {17,19,21,23,25,27,29,31}
+};
 
 //Make into matrix so that it only needs to be computed once instead of multiple computations and function calls.
 std::vector<std::vector<double>> Coeff(){
@@ -42,7 +57,7 @@ std::vector<std::vector<double>> Coeff(){
 }
 
 //Compute DCT(A) = matrix(C)*matrix(A)*matrix(C transpose) and store in results; 
-void DCT(std::vector<int> data, std::vector<std::vector<double>> c){
+std::vector<std::vector<double>> DCT(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
     auto results = create_2d_vector<double>(8,8);
     auto temp = create_2d_vector<double>(8,8);
     for(int i = 0; i< 8; i++){
@@ -55,13 +70,77 @@ void DCT(std::vector<int> data, std::vector<std::vector<double>> c){
     for(int i = 0; i< 8; i++){
         for(int j = 0; j<8; j++){
             for(int x = 0; x<8; x++){
-                results.at(i).at(j) += temp.at(i).at(x)*c.at(j).at(x);
+                results.at(i).at(j) += temp.at(i).at(x)*c.at(j).at(x); //for c transpose
             }
         }
     }
+    return results;
 }
 
-void blocks(std::vector<std::vector<PixelYCbCr>> data, int height, int width){
+//Quantized values are rounded and clamped to the closest char within the (0,255) range
+std::vector<std::vector<unsigned char>> Quantized(std::vector<std::vector<double>> data){
+    auto results = create_2d_vector<unsigned char>(8,8);
+    for(int i = 0; i<8; i++){
+        for(int j = 0; j <8; j++){
+            results.at(i).at(j) = round_and_clamp_to_char((data.at(i).at(j)/Q_1.at(i).at(j)))
+        }
+    }
+    return results;
+}
+
+//Function for navigating through the matrices and outputs the results as the encoding order.
+std::vector<unsigned char> E_O(std::vector<std::vector<unsigned char>> data){
+    std::vector<unsigned char> results;
+    int count = 0;
+    int reverse = 1;
+    while(count <= 14){
+        int i = 0;
+        int j = 0;
+        if(count < 8){
+            if((count % 2) == 0){
+                i = count;
+                j = 0;
+                for(int k = 0; k <= count; k++){
+                    results.push_back(data.at(i).at(j));
+                    i-=1;
+                    j+=1;
+                }
+            }else{
+                i = 0;
+                j = count;
+                for(int k = 0; k <= count; k++){
+                    results.push_back(data.at(i).at(j));
+                    i+=1;
+                    j-=1;
+                }
+            }
+        }
+        else{
+            if((count % 2) == 0){
+                i = 7;
+                j = count-7;
+                for(int k = 0; k < (count-reverse); k++){
+                    results.push_back(data.at(i).at(j));
+                    i-=1;
+                    j+=1;
+                }
+            }else{
+                i = count - 7;
+                j = 7;
+                for(int k = 0; k <(count-reverse); k++){
+                    results.push_back(data.at(i).at(j));
+                    i+=1;
+                    j-=1;
+                }
+            }
+            reverse += 2;
+        }
+        count++;
+    }
+    return results;
+}
+
+void blocks(std::vector<std::vector<PixelYCbCr>> data, int height, int width, std::vector<std::vector<double>> c){
     int recorded_x = 0;
     int recorded_y = 0;
     while(true){
@@ -94,7 +173,10 @@ void blocks(std::vector<std::vector<PixelYCbCr>> data, int height, int width){
                 }
             }
         }
-        //block matrix now available as temporary
+        std::vector<std::vector<double>> dct_block = DCT(temporary, c);
+        std::vector<std::vector<unsigned char>> quantum = Quantized(dct_block);
+        std::vector<unsigned char> encoding = E_O(quantum); //Should be organized in encoding order now for RLE and DC
+        //Next step now, encoding order 
         if(recorded_x+8 > width){
             if(recorded_y+8 > height){
                 break;
