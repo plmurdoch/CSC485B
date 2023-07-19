@@ -47,9 +47,9 @@ std::vector<std::vector<double>> Coeff(){
     for(int i = 0; i < 8; i++){
         for(int j = 0; j < 8; j++){
             if(i == 0){
-                results.at(i).at(j) = sqrt((1/8));
+                results.at(i).at(j) = sqrt(0.125);
             }else{
-                results.at(i).at(j) = (sqrt((1/4))*cos((((2*j)+1)*i*M_PI)/16));
+                results.at(i).at(j) = (sqrt((0.25))*cos((((2.00*j)+1.00)*i*M_PI)/16.00));
             }
         }
     }
@@ -63,14 +63,14 @@ std::vector<std::vector<double>> DCT(std::vector<std::vector<int>> data, std::ve
     for(int i = 0; i< 8; i++){
         for(int j = 0; j<8; j++){
             for(int x = 0; x<8; x++){
-                temp.at(i).at(j) += data.at(i).at(x)*c.at(x).at(j);
+                temp.at(i).at(j) += (data.at(i).at(x)*c.at(x).at(j));
             }
         }
     }
     for(int i = 0; i< 8; i++){
         for(int j = 0; j<8; j++){
             for(int x = 0; x<8; x++){
-                results.at(i).at(j) += temp.at(i).at(x)*c.at(j).at(x); //for c transpose
+                results.at(i).at(j) += (temp.at(i).at(x)*c.at(j).at(x)); //for c transpose
             }
         }
     }
@@ -78,8 +78,8 @@ std::vector<std::vector<double>> DCT(std::vector<std::vector<int>> data, std::ve
 }
 
 //Quantized values are rounded and clamped to the closest char within the (0,255) range
-std::vector<std::vector<unsigned char>> Quantized(std::vector<std::vector<double>> data){
-    auto results = create_2d_vector<unsigned char>(8,8);
+std::vector<std::vector<int>> Quantized(std::vector<std::vector<double>> data){
+    auto results = create_2d_vector<int>(8,8);
     for(int i = 0; i<8; i++){
         for(int j = 0; j <8; j++){
             results.at(i).at(j) = round((data.at(i).at(j)/Q_1.at(i).at(j)));
@@ -89,7 +89,7 @@ std::vector<std::vector<unsigned char>> Quantized(std::vector<std::vector<double
 }
 
 //Function for navigating through the matrices and outputs the results as the encoding order.
-std::vector<int> E_O(std::vector<std::vector<unsigned char>> data){
+std::vector<int> E_O(std::vector<std::vector<int>> data){
     std::vector<int> results;
     int count = 0;
     int reverse = 1;
@@ -140,7 +140,49 @@ std::vector<int> E_O(std::vector<std::vector<unsigned char>> data){
     return results;
 }
 
-void blocks(std::vector<std::vector<int>> data, int height, int width, std::vector<std::vector<double>> c){
+void rle(std::vector<int> data, OutputBitStream stream){
+    int size = data.size();
+    for(int i = 0; i<size; i++){
+        unsigned char output = data.at(i);
+        stream.push_byte(output);
+        int j = i+1;
+        int count = 0;
+        while(j < size){
+            if(data.at(j) == data.at(i)){
+                count++;
+                j++;
+            }else{
+                break;
+            }
+        }
+        if(count == 0){
+            stream.push_bit(0);
+        }else{
+            std::vector<int> length_bits;
+            int temp = count;
+            int num_bits = floor(log2((double)count)) + 1;
+            for(int k = 0; k< num_bits; k++){
+                stream.push_bit(1);
+            }
+            stream.push_bit(0);
+            for(int k = 1; k<num_bits; k++){
+                length_bits.push_back((temp%2));
+                if(temp%2 == 1){
+                    temp-= 1;
+                }
+                temp = temp/2;
+            }
+            int length_size = length_bits.size();
+            for(int x = length_size-1; x>= 0; x--){
+                stream.push_bit(length_bits.at(x));
+            }
+            i += count;
+        }
+    }
+}
+
+
+void blocks(std::vector<std::vector<int>> data, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream){
     int recorded_x = 0;
     int recorded_y = 0;
     while(true){
@@ -151,8 +193,6 @@ void blocks(std::vector<std::vector<int>> data, int height, int width, std::vect
             for(int j = 0; j < 8; j++){
                 if(recorded_y+i < height){
                     if(recorded_x+j < width){
-                        std::cout<<(recorded_y+i)<<":"<<(recorded_x+j)<<std::endl;
-                        std::cout<<data.at(recorded_y+i).at(recorded_x+j)<<std::endl;
                         temporary.at(i).at(j) = data.at(recorded_y+i).at(recorded_x+j);
                         prev = temporary.at(i).at(j);
                         if(prev_row.size() == 8){
@@ -173,8 +213,9 @@ void blocks(std::vector<std::vector<int>> data, int height, int width, std::vect
             }
         }
         std::vector<std::vector<double>> dct_block = DCT(temporary, c);
-        std::vector<std::vector<unsigned char>> quantum = Quantized(dct_block);
+        std::vector<std::vector<int>> quantum = Quantized(dct_block);
         std::vector<int> encoding = E_O(quantum); //Should be organized in encoding order now for RLE and DC
+        rle(encoding, stream);
         if(recorded_x+8 >=width){
             if(recorded_y+8 >=height){
                 break;
@@ -189,7 +230,7 @@ void blocks(std::vector<std::vector<int>> data, int height, int width, std::vect
 }
 
 //A simple downscaling algorithm using averaging.
-std::vector<std::vector<unsigned char> > scale_down(std::vector<std::vector<unsigned char> > source_image, unsigned int source_width, unsigned int source_height, int factor){
+std::vector<std::vector<int> > scale_down(std::vector<std::vector<unsigned char> > source_image, unsigned int source_width, unsigned int source_height, int factor){
 
     unsigned int scaled_height = (source_height+factor-1)/factor;
     unsigned int scaled_width = (source_width+factor-1)/factor;
@@ -204,7 +245,7 @@ std::vector<std::vector<unsigned char> > scale_down(std::vector<std::vector<unsi
             counts.at(y/factor).at(x/factor)++;
         }
 
-    auto result = create_2d_vector<unsigned char>(scaled_height,scaled_width);
+    auto result = create_2d_vector<int>(scaled_height,scaled_width);
     for(unsigned int y = 0; y < scaled_height; y++)
         for (unsigned int x = 0; x < scaled_width; x++)
             result.at(y).at(x) = (unsigned char)((sums.at(y).at(x)+0.5)/counts.at(y).at(x));
@@ -253,9 +294,8 @@ int main(int argc, char** argv){
     for(unsigned int y = 0; y < height; y++)
         for (unsigned int x = 0; x < width; x++){
             y_val.at(y).at(x) = imageYCbCr.at(y).at(x).Y;
-            output_stream.push_byte(imageYCbCr.at(y).at(x).Y);
         }
-    blocks(y_val, height, width, coeff);
+    blocks(y_val, height, width, coeff, output_stream);
     //Extract the Cb plane into its own array 
     auto Cb = create_2d_vector<unsigned char>(height,width);
     for(unsigned int y = 0; y < height; y++)
@@ -269,17 +309,17 @@ int main(int argc, char** argv){
         for (unsigned int x = 0; x < width; x++)
             Cr.at(y).at(x) = imageYCbCr.at(y).at(x).Cr;
     auto Cr_scaled = scale_down(Cr,width,height,2);
-
+    
+    //In decompressor keep a running total of the bits read for Y, cb, cr
+    //In decompressor with first 64 bits are size:
+    //Count for Y: ceil(width/8)*ceil(height/8)*64
+    //Count for Cb, Cr: ceil(((width+1)/2)/8)*ceil(((height+1)/2)/8)*64
+    //In the decoder for we will keep count so that we know when we have iterated through an entire block and moved to the next/finished.
     //Write the Cb values 
-    for(unsigned int y = 0; y < (height+1)/2; y++)
-        for (unsigned int x = 0; x < (width+1)/2; x++)
-            output_stream.push_byte(Cb_scaled.at(y).at(x));
+    blocks(Cb_scaled, (height+1)/2, (width+1)/2, coeff, output_stream);
 
     //Write the Cr values 
-    for(unsigned int y = 0; y < (height+1)/2; y++)
-        for (unsigned int x = 0; x < (width+1)/2; x++)
-            output_stream.push_byte(Cr_scaled.at(y).at(x));
-
+    blocks(Cr_scaled, (height+1)/2, (width+1)/2, coeff, output_stream);
 
     output_stream.flush_to_byte();
     output_file.close();
