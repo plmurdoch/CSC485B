@@ -29,17 +29,7 @@
 #include "bitmap_image.hpp"
 #include "uvg_common.hpp"
 
-//Based on quality the quantum for Q_1 will become a changing value
-std::vector<std::vector<int>> Q_1 = {
-    {3,5,7,9,11,13,15,17},
-    {5,7,9,11,13,15,17,19},
-    {7,9,11,13,15,17,19,21},
-    {9,11,13,15,17,19,21,23},
-    {11,13,15,17,19,21,23,25},
-    {13,15,17,19,21,23,25,27},
-    {15,17,19,21,23,25,27,29},
-    {17,19,21,23,25,27,29,31}
-};
+
 
 //Make into matrix so that it only needs to be computed once instead of multiple computations and function calls.
 std::vector<std::vector<double>> Coeff(){
@@ -78,11 +68,11 @@ std::vector<std::vector<double>> DCT(std::vector<std::vector<int>> data, std::ve
 }
 
 //Quantized values are rounded and clamped to the closest char within the (0,255) range
-std::vector<std::vector<int>> Quantized(std::vector<std::vector<double>> data){
+std::vector<std::vector<int>> Quantized(std::vector<std::vector<double>> data, std::vector<std::vector<int>> Q){
     auto results = create_2d_vector<int>(8,8);
     for(int i = 0; i<8; i++){
         for(int j = 0; j <8; j++){
-            results.at(i).at(j) = round((data.at(i).at(j)/Q_1.at(i).at(j)));
+            results.at(i).at(j) = round((data.at(i).at(j)/Q.at(i).at(j)));
         }
     }
     return results;
@@ -182,7 +172,7 @@ void rle(std::vector<int> data, OutputBitStream stream){
 }
 
 
-void blocks(std::vector<std::vector<int>> data, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream){
+void blocks(std::vector<std::vector<int>> data, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream, std::vector<std::vector<int>> Q){
     int recorded_x = 0;
     int recorded_y = 0;
     while(true){
@@ -213,7 +203,7 @@ void blocks(std::vector<std::vector<int>> data, int height, int width, std::vect
             }
         }
         std::vector<std::vector<double>> dct_block = DCT(temporary, c);
-        std::vector<std::vector<int>> quantum = Quantized(dct_block);
+        std::vector<std::vector<int>> quantum = Quantized(dct_block, Q);
         std::vector<int> encoding = E_O(quantum); //Should be organized in encoding order now for RLE and DC
         rle(encoding, stream);
         if(recorded_x+8 >=width){
@@ -280,12 +270,52 @@ int main(int argc, char** argv){
         }
     }
     std::vector<std::vector<double>> coeff = Coeff();
+    //Based on quality the quantum for Q_1 will become a changing value
+    std::vector<std::vector<int>> Q_l = {
+        {16,11,10,16,24,40,51,61},
+        {12,12,14,19,26,58,60,55},
+        {14,13,16,24,40,57,69,56},
+        {14,17,22,29,51,87,80,62},
+        {18,22,37,56,68,109,103,77},
+        {24,35,55,64,81,104,113,92},
+        {49,64,78,87,103,121,120,101},
+        {72,92,95,98,112,100,103,99}
+    };
+
+    std::vector<std::vector<int>> Q_C = {
+        {17,18,24,47,99,99,99,99},
+        {18,21,26,66,99,99,99,99},
+        {24,26,56,99,99,99,99,99},
+        {47,66,99,99,99,99,99,99},
+        {99,99,99,99,99,99,99,99},
+        {99,99,99,99,99,99,99,99},
+        {99,99,99,99,99,99,99,99},
+        {99,99,99,99,99,99,99,99}
+    };
     std::ofstream output_file{output_filename,std::ios::binary};
     OutputBitStream output_stream {output_file};
 
     //Placeholder: Use a simple bitstream containing the height/width (in 32 bits each)
     //followed by the entire set of values in each colour plane (in row major order).
-
+    if(quality == "low"){
+        for(int i = 0; i< 8; i++){
+            for(int j = 0; j<8; j++){
+                Q_l.at(i).at(j) = (2*Q_l.at(i).at(j));
+                Q_C.at(i).at(j) = (2*Q_C.at(i).at(j)); 
+            }
+        }
+        output_stream.push_bits(0,2);
+    }else if(quality == "high"){
+        for(int i = 0; i< 8; i++){
+            for(int j = 0; j<8; j++){
+                Q_l.at(i).at(j) = (round(0.25*Q_l.at(i).at(j)));
+                Q_C.at(i).at(j) = (round(0.25*Q_C.at(i).at(j))); 
+            }
+        }
+        output_stream.push_bits(2,2);
+    }else{
+        output_stream.push_bits(1,2);
+    }
     output_stream.push_u32(height);
     output_stream.push_u32(width);
 
@@ -295,7 +325,7 @@ int main(int argc, char** argv){
         for (unsigned int x = 0; x < width; x++){
             y_val.at(y).at(x) = imageYCbCr.at(y).at(x).Y;
         }
-    blocks(y_val, height, width, coeff, output_stream);
+    blocks(y_val, height, width, coeff, output_stream, Q_l);
     //Extract the Cb plane into its own array 
     auto Cb = create_2d_vector<unsigned char>(height,width);
     for(unsigned int y = 0; y < height; y++)
@@ -316,10 +346,10 @@ int main(int argc, char** argv){
     //Count for Cb, Cr: ceil(((width+1)/2)/8)*ceil(((height+1)/2)/8)*64
     //In the decoder for we will keep count so that we know when we have iterated through an entire block and moved to the next/finished.
     //Write the Cb values 
-    blocks(Cb_scaled, (height+1)/2, (width+1)/2, coeff, output_stream);
+    blocks(Cb_scaled, (height+1)/2, (width+1)/2, coeff, output_stream, Q_C);
 
     //Write the Cr values 
-    blocks(Cr_scaled, (height+1)/2, (width+1)/2, coeff, output_stream);
+    blocks(Cr_scaled, (height+1)/2, (width+1)/2, coeff, output_stream, Q_C);
 
     output_stream.flush_to_byte();
     output_file.close();
