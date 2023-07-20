@@ -270,7 +270,7 @@ int main(int argc, char** argv){
         }
     }
     std::vector<std::vector<double>> coeff = Coeff();
-    //Based on quality the quantum for Q_1 will become a changing value
+    //Based on quality the quantum for Q_l and Q_C will become a changing value
     std::vector<std::vector<int>> Q_l = {
         {16,11,10,16,24,40,51,61},
         {12,12,14,19,26,58,60,55},
@@ -294,9 +294,6 @@ int main(int argc, char** argv){
     };
     std::ofstream output_file{output_filename,std::ios::binary};
     OutputBitStream output_stream {output_file};
-
-    //Placeholder: Use a simple bitstream containing the height/width (in 32 bits each)
-    //followed by the entire set of values in each colour plane (in row major order).
     if(quality == "low"){
         for(int i = 0; i< 8; i++){
             for(int j = 0; j<8; j++){
