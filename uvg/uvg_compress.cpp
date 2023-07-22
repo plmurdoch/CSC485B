@@ -47,7 +47,26 @@ std::vector<std::vector<double>> Coeff(){
 }
 
 //Compute DCT(A) = matrix(C)*matrix(A)*matrix(C transpose) and store in results; 
-std::vector<std::vector<double>> DCT(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
+std::vector<std::vector<double>> DCT_low(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
+    auto results = create_2d_vector<double>(8,8);
+    auto temp = create_2d_vector<double>(8,8);
+    for(int i = 0; i< 8; i++){
+        for(int j = 0; j<8; j++){
+            for(int x = 0; x<8; x++){
+                temp.at(i).at(j) += (data.at(x).at(j)*c.at(i).at(x));
+            }
+        }
+    }
+    for(int i = 0; i< 8; i++){
+        for(int j = 0; j<8; j++){
+            for(int x = 0; x<8; x++){
+                results.at(i).at(j) += (temp.at(i).at(x)*c.at(j).at(x)); //for c transpose
+            }
+        }
+    }
+    return results;
+}
+std::vector<std::vector<double>> DCT_high(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
     auto results = create_2d_vector<double>(8,8);
     auto temp = create_2d_vector<double>(8,8);
     for(int i = 0; i< 8; i++){
@@ -163,7 +182,7 @@ void rle(std::vector<int> data, OutputBitStream stream){
 }
 
 
-void blocks(std::vector<std::vector<int>> data, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream, std::vector<std::vector<int>> Q){
+void blocks(std::vector<std::vector<int>> data, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream, std::vector<std::vector<int>> Q, std::string quality){
     int recorded_x = 0;
     int recorded_y = 0;
     while(true){
@@ -193,7 +212,12 @@ void blocks(std::vector<std::vector<int>> data, int height, int width, std::vect
                 }
             }
         }
-        std::vector<std::vector<double>> dct_block = DCT(temporary, c);
+        std::vector<std::vector<double>> dct_block;
+        if(quality!="low"){
+            dct_block = DCT_high(temporary, c);
+        }else{
+            dct_block = DCT_low(temporary, c);
+        }
         std::vector<std::vector<int>> quantum = Quantized(dct_block, Q);
         std::vector<int> encoding = E_O(quantum); //Should be organized in encoding order now for RLE and DC
         rle(encoding, stream);
@@ -274,14 +298,14 @@ int main(int argc, char** argv){
     };
 
     std::vector<std::vector<int>> Q_C = {
-        {17,18,24,47,99,99,99,99},
-        {18,21,26,66,99,99,99,99},
-        {24,26,56,99,99,99,99,99},
-        {47,66,99,99,99,99,99,99},
-        {99,99,99,99,99,99,99,99},
-        {99,99,99,99,99,99,99,99},
-        {99,99,99,99,99,99,99,99},
-        {99,99,99,99,99,99,99,99}
+        {8,16,19,22,26,27,29,34},
+        {16,16,22,24,27,29,34,37},
+        {19,22,26,27,29,34,34,38},
+        {22,22,26,27,29,34,37,40},
+        {22,26,27,29,32,35,40,48},
+        {26,27,29,32,35,40,48,58},
+        {26,27,29,34,38,46,56,69},
+        {27,29,35,38,46,56,69,83}
     };
     std::ofstream output_file{output_filename,std::ios::binary};
     OutputBitStream output_stream {output_file};
@@ -291,8 +315,8 @@ int main(int argc, char** argv){
     if(quality == "low"){
         for(int i = 0; i< 8; i++){
             for(int j = 0; j<8; j++){
-                Q_l.at(i).at(j) = (2*Q_l.at(i).at(j));
-                Q_C.at(i).at(j) = (2*Q_C.at(i).at(j)); 
+                Q_l.at(i).at(j) = round(2*(Q_l.at(i).at(j)));
+                Q_C.at(i).at(j) = round(2*(Q_C.at(i).at(j))); 
             }
         }
         output_stream.push_byte((unsigned char)0);
@@ -317,7 +341,7 @@ int main(int argc, char** argv){
         for (unsigned int x = 0; x < width; x++){
             y_val.at(y).at(x) = imageYCbCr.at(y).at(x).Y;
         }
-    blocks(y_val, height, width, coeff, output_stream, Q_l);
+    blocks(y_val, height, width, coeff, output_stream, Q_l,quality);
     //Extract the Cb plane into its own array 
     auto Cb = create_2d_vector<unsigned char>(height,width);
     for(unsigned int y = 0; y < height; y++)
@@ -338,10 +362,10 @@ int main(int argc, char** argv){
     //Count for Cb, Cr: ceil(((width+1)/2)/8)*ceil(((height+1)/2)/8)*64
     //In the decoder for we will keep count so that we know when we have iterated through an entire block and moved to the next/finished.
     //Write the Cb values 
-    blocks(Cb_scaled, ((height+1)/2), ((width+1)/2), coeff, output_stream, Q_C);
+    blocks(Cb_scaled, ((height+1)/2), ((width+1)/2), coeff, output_stream, Q_C, quality);
 
     //Write the Cr values 
-    blocks(Cr_scaled, (height+1)/2, ((width+1)/2), coeff, output_stream, Q_C);
+    blocks(Cr_scaled, ((height+1)/2), ((width+1)/2), coeff, output_stream, Q_C, quality);
 
     output_stream.flush_to_byte();
     output_file.close();
