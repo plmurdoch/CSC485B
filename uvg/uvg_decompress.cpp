@@ -69,106 +69,57 @@ std::vector<std::vector<double>> inverse_DCT(std::vector<std::vector<int>> data,
     return results;
 }
 
-std::vector<std::vector<unsigned char>> read_input(InputBitStream input, int count, std::vector<std::vector<int>> Q, std::vector<std::vector<double>> C, int height, int width){
+std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::vector<std::vector<int>> Q, std::vector<std::vector<double>> C, int height, int width){
     auto result = create_2d_vector<unsigned char>(height, width);
+    int counter = 0;
     std::vector<unsigned char> encoded;
-    int active_count = 0;
     int recorded_y = 0;
     int recorded_x = 0;
-    while(active_count<count){
+    while(true){
         unsigned char num = input.read_byte();
         encoded.push_back(num);
-        std::vector<unsigned char> length;
-        length.push_back(input.read_bit());
-        if(length.at(0) != 0){
-            unsigned char unary = input.read_bit();
-            while(unary != 0){
-                length.push_back(unary);
-                unary = input.read_bit();
-            }
-            int bits = length.size();
-            std::vector<unsigned char> length_bits;
-            length_bits.push_back(1);
-            for(int i = 0; i<bits-1; i++){
-                length_bits.push_back(input.read_bit());
-            }
-            int exp_val = 0;
-            int value = 0;
-            for(int j = length_bits.size()-1; j>= 0; j--){
-                value += length_bits.at(j)*pow(2,exp_val);
-                exp_val++;
-            }
+        unsigned char length = input.read_byte();
+        int value = length;
+        if(value != 0){
             for(int j = 0; j<value; j++){
                 encoded.push_back(num);
             }
-            if(encoded.size() == 64){
-                auto DCT = create_2d_vector<int>(8,8);
-                int E_O_size = E_O.size();
-                for(int i = 0; i<E_O_size; i++){
-                    int row = E_O.at(i).first;
-                    int column = E_O.at(i).second;
-                    DCT.at(row).at(column) = (encoded.at(i)*Q.at(row).at(column));
-                }
-                encoded.clear();
-                auto data = create_2d_vector<double>(8,8);
-                data = inverse_DCT(DCT, C);
-                for(int y = 0; y < 8; y++){
-                    for(int x = 0; x<8; x++){
-                        if((y+recorded_y) < height){
-                            if((x+recorded_x) < width){
-                                result.at(y+recorded_y).at(x+recorded_x) = round(data.at(y).at(x));
+        }
+        int encoded_size = encoded.size();
+        if(encoded_size == 64){
+            auto DCT = create_2d_vector<int>(8,8);
+            int E_O_size = E_O.size();
+            for(int i = 0; i<E_O_size; i++){
+                int row = E_O.at(i).first;
+                int column = E_O.at(i).second;
+                int for_DCT = encoded.at(i);
+                DCT.at(row).at(column) = ((for_DCT-127)*Q.at(row).at(column));
+            }
+            encoded.clear();
+            auto data = create_2d_vector<double>(8,8);
+            data = inverse_DCT(DCT, C);
+            for(int y = 0; y < 8; y++){
+                for(int x = 0; x<8; x++){
+                    if((y+recorded_y) < height){
+                        if((x+recorded_x) < width){
+                            result.at(y+recorded_y).at(x+recorded_x) = round(data.at(y).at(x));
+                            if (counter == ((height*width)-1)){
+                                return result;
+                            }else{
+                                counter++;
                             }
                         }
                     }
                 }
-                if(recorded_x+8 >=width){
-                    if(recorded_y+8 >=height){
-                        break;
-                    }else{
-                        recorded_x = 0;
-                        recorded_y += 8;
-                    }
-                }else{
-                    recorded_x += 8;
-                }
             }
-            active_count += (value+1);
-        }else{
-            if(encoded.size() == 64){
-                auto DCT = create_2d_vector<int>(8,8);
-                int E_O_size = E_O.size();
-                for(int i = 0; i<E_O_size; i++){
-                    int row = E_O.at(i).first;
-                    int column = E_O.at(i).second;
-                    DCT.at(row).at(column) = (encoded.at(i)*Q.at(row).at(column));
-                }
-                encoded.clear();
-                auto data = create_2d_vector<double>(8,8);
-                data = inverse_DCT(DCT, C);
-                for(int y = 0; y < 8; y++){
-                    for(int x = 0; x<8; x++){
-                        if((y+recorded_y) < height){
-                            if((x+recorded_x) < width){
-                                result.at(y+recorded_y).at(x+recorded_x) = round(data.at(y).at(x));
-                            }
-                        }
-                    }
-                }
-                if(recorded_x+8 >=width){
-                    if(recorded_y+8 >=height){
-                        break;
-                    }else{
-                        recorded_x = 0;
-                        recorded_y += 8;
-                    }
-                }else{
-                    recorded_x += 8;
-                }
+            if((recorded_x+8) < width){
+                recorded_x += 8;
+            }else{
+                recorded_x = 0;
+                recorded_y += 8;
             }
-            active_count++;
         }
     }
-    return result;
 }
 
 int main(int argc, char** argv){
@@ -180,7 +131,7 @@ int main(int argc, char** argv){
     std::string output_filename {argv[2]};
     std::ifstream input_file{input_filename,std::ios::binary};
     InputBitStream input_stream {input_file};
-    unsigned int quality = input_stream.read_bits(2);
+    unsigned int quality = input_stream.read_byte();
     std::vector<std::vector<int>> Q_l = {
         {16,11,10,16,24,40,51,61},
         {12,12,14,19,26,58,60,55},
@@ -219,15 +170,13 @@ int main(int argc, char** argv){
     std::vector<std::vector<double>> coeff = Coeff();
     unsigned int height = input_stream.read_u32();
     unsigned int width = input_stream.read_u32();
-    int  Y_count = ((ceil(height*0.125)*ceil(width*0.125))*64);
-    int Cr_Cb = ceil(((width+1)/2)*0.125)*ceil(((height+1)/2)*0.125)*64;
     auto Y = create_2d_vector<unsigned char>(height,width);
     auto Cb_scaled = create_2d_vector<unsigned char>((height+1)/2,(width+1)/2);
     auto Cr_scaled = create_2d_vector<unsigned char>((height+1)/2,(width+1)/2);
     
-    Y = read_input(input_stream, Y_count, Q_l, coeff,height, width);
-    Cb_scaled = read_input(input_stream, Cr_Cb, Q_C, coeff,((height+1)/2),((width+1)/2));
-    Cr_scaled = read_input(input_stream, Cr_Cb, Q_C, coeff,((height+1)/2),((width+1)/2));    
+    Y = read_input(input_stream, Q_l, coeff,height, width);
+    Cb_scaled = read_input(input_stream, Q_C, coeff,((height+1)/2),((width+1)/2));
+    Cr_scaled = read_input(input_stream, Q_C, coeff,((height+1)/2),((width+1)/2));    
     auto imageYCbCr = create_2d_vector<PixelYCbCr>(height,width);
     for (unsigned int y = 0; y < height; y++){
         for (unsigned int x = 0; x < width; x++){

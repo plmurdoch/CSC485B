@@ -67,12 +67,20 @@ std::vector<std::vector<double>> DCT(std::vector<std::vector<int>> data, std::ve
     return results;
 }
 
-//Quantized values are rounded and clamped to the closest char within the (0,255) range
+//Quantized values are rounded and clamped within the (-127,127) range so that they can be output as bytes.
 std::vector<std::vector<int>> Quantized(std::vector<std::vector<double>> data, std::vector<std::vector<int>> Q){
     auto results = create_2d_vector<int>(8,8);
     for(int i = 0; i<8; i++){
         for(int j = 0; j <8; j++){
-            results.at(i).at(j) = round((data.at(i).at(j)/Q.at(i).at(j)));
+            int dat = round((data.at(i).at(j)/Q.at(i).at(j)));
+            if(dat < -127){
+                dat = 0;
+            }else if(dat > 127){
+                dat = 255;
+            }else{
+                dat = dat +127;
+            }
+            results.at(i).at(j) = dat;
         }
     }
     return results;
@@ -146,26 +154,9 @@ void rle(std::vector<int> data, OutputBitStream stream){
             }
         }
         if(count == 0){
-            stream.push_bit(0);
+            stream.push_byte((unsigned char)0);
         }else{
-            std::vector<int> length_bits;
-            int temp = count;
-            int num_bits = floor(log2((double)count)) + 1;
-            for(int k = 0; k< num_bits; k++){
-                stream.push_bit(1);
-            }
-            stream.push_bit(0);
-            for(int k = 1; k<num_bits; k++){
-                length_bits.push_back((temp%2));
-                if(temp%2 == 1){
-                    temp-= 1;
-                }
-                temp = temp/2;
-            }
-            int length_size = length_bits.size();
-            for(int x = length_size-1; x>= 0; x--){
-                stream.push_bit(length_bits.at(x));
-            }
+            stream.push_byte((unsigned char)count);
             i += count;
         }
     }
@@ -270,7 +261,7 @@ int main(int argc, char** argv){
         }
     }
     std::vector<std::vector<double>> coeff = Coeff();
-    //Based on quality the quantum for Q_l and Q_C will become a changing value
+    //Based on quality the quantum for Q_1 will become a changing value
     std::vector<std::vector<int>> Q_l = {
         {16,11,10,16,24,40,51,61},
         {12,12,14,19,26,58,60,55},
@@ -294,6 +285,9 @@ int main(int argc, char** argv){
     };
     std::ofstream output_file{output_filename,std::ios::binary};
     OutputBitStream output_stream {output_file};
+
+    //Placeholder: Use a simple bitstream containing the height/width (in 32 bits each)
+    //followed by the entire set of values in each colour plane (in row major order).
     if(quality == "low"){
         for(int i = 0; i< 8; i++){
             for(int j = 0; j<8; j++){
@@ -301,7 +295,8 @@ int main(int argc, char** argv){
                 Q_C.at(i).at(j) = (2*Q_C.at(i).at(j)); 
             }
         }
-        output_stream.push_bits(0,2);
+        output_stream.push_byte((unsigned char)0);
+        
     }else if(quality == "high"){
         for(int i = 0; i< 8; i++){
             for(int j = 0; j<8; j++){
@@ -309,9 +304,9 @@ int main(int argc, char** argv){
                 Q_C.at(i).at(j) = (round(0.25*Q_C.at(i).at(j))); 
             }
         }
-        output_stream.push_bits(2,2);
+        output_stream.push_byte((unsigned char)2);
     }else{
-        output_stream.push_bits(1,2);
+        output_stream.push_byte((unsigned char)1);
     }
     output_stream.push_u32(height);
     output_stream.push_u32(width);
@@ -343,10 +338,10 @@ int main(int argc, char** argv){
     //Count for Cb, Cr: ceil(((width+1)/2)/8)*ceil(((height+1)/2)/8)*64
     //In the decoder for we will keep count so that we know when we have iterated through an entire block and moved to the next/finished.
     //Write the Cb values 
-    blocks(Cb_scaled, (height+1)/2, (width+1)/2, coeff, output_stream, Q_C);
+    blocks(Cb_scaled, ((height+1)/2), ((width+1)/2), coeff, output_stream, Q_C);
 
     //Write the Cr values 
-    blocks(Cr_scaled, (height+1)/2, (width+1)/2, coeff, output_stream, Q_C);
+    blocks(Cr_scaled, (height+1)/2, ((width+1)/2), coeff, output_stream, Q_C);
 
     output_stream.flush_to_byte();
     output_file.close();
