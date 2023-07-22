@@ -14,10 +14,11 @@
 
    B. Bird - 2023-07-03
 */
-//What to do, compression techniques
-//Check to see if we need to round and clamp DCT aswell.
-//Change Q_1 so that it records different quantums based on the quality setting.
-//Encoding is all we need with rudimentary techniques.
+/*
+Assignment 3: Image Compression Code
+Written By: Payton Murdoch
+Student Number: V00904677
+*/
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -46,6 +47,14 @@ std::vector<std::vector<double>> Coeff(){
     return results;
 }
 
+/*
+Note: There were interesting interactions which resulted in me creating 2 DCT functions.
+For the the High setting worked in a different way in comparison to the medium and low settings.
+This was found after many hours of trial and error in the debugging process. Utilizing the method:
+DCT(A) = CAC^T yielded a result in the high matrix which turned the entire image green.
+However, utilizing a method DCT(A) = ACC^T kept the matrices in tact. I cannot explain how this occured.
+Therefore to compensate for this we have DCT_low for medium and low values and DCT_high for the high setting values.  
+*/
 //Compute DCT(A) = matrix(C)*matrix(A)*matrix(C transpose) and store in results; 
 std::vector<std::vector<double>> DCT_low(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
     auto results = create_2d_vector<double>(8,8);
@@ -86,7 +95,7 @@ std::vector<std::vector<double>> DCT_high(std::vector<std::vector<int>> data, st
     return results;
 }
 
-//Quantized values are rounded and clamped within the (-127,127) range so that they can be output as bytes.
+//Quantized values are rounded and clamped within the (-127,127) range so that they can be output as bytes in 0-255 range.
 std::vector<std::vector<int>> Quantized(std::vector<std::vector<double>> data, std::vector<std::vector<int>> Q){
     auto results = create_2d_vector<int>(8,8);
     for(int i = 0; i<8; i++){
@@ -157,6 +166,8 @@ std::vector<int> E_O(std::vector<std::vector<int>> data){
     return results;
 }
 
+//RLE encoding using basic implementation outputing num:length pairs with each entry of the pair utilizing 8 bits.
+//Will be improved in Assignment 4, however, my other implementation for Variable length RLE was not working properly.
 void rle(std::vector<int> data, OutputBitStream stream){
     int size = data.size();
     for(int i = 0; i<size; i++){
@@ -181,7 +192,8 @@ void rle(std::vector<int> data, OutputBitStream stream){
     }
 }
 
-
+//Main body of code, blocks takes the input and parses them into 8x8 blocks for the dct and quantization operations to occur.
+//In this function the block is placed into encoding order and then RLE is done before the block is streamed into the file.
 void blocks(std::vector<std::vector<int>> data, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream, std::vector<std::vector<int>> Q, std::string quality){
     int recorded_x = 0;
     int recorded_y = 0;
@@ -212,14 +224,14 @@ void blocks(std::vector<std::vector<int>> data, int height, int width, std::vect
                 }
             }
         }
-        std::vector<std::vector<double>> dct_block;
-        if(quality!="low"){
+        auto dct_block = create_2d_vector<double>(8,8);
+        if(quality=="high"){
             dct_block = DCT_high(temporary, c);
         }else{
             dct_block = DCT_low(temporary, c);
         }
         std::vector<std::vector<int>> quantum = Quantized(dct_block, Q);
-        std::vector<int> encoding = E_O(quantum); //Should be organized in encoding order now for RLE and DC
+        std::vector<int> encoding = E_O(quantum);
         rle(encoding, stream);
         if(recorded_x+8 >=width){
             if(recorded_y+8 >=height){
@@ -285,19 +297,12 @@ int main(int argc, char** argv){
         }
     }
     std::vector<std::vector<double>> coeff = Coeff();
-    //Based on quality the quantum for Q_1 will become a changing value
-    std::vector<std::vector<int>> Q_l = {
-        {16,11,10,16,24,40,51,61},
-        {12,12,14,19,26,58,60,55},
-        {14,13,16,24,40,57,69,56},
-        {14,17,22,29,51,87,80,62},
-        {18,22,37,56,68,109,103,77},
-        {24,35,55,64,81,104,113,92},
-        {49,64,78,87,103,121,120,101},
-        {72,92,95,98,112,100,103,99}
-    };
-
-    std::vector<std::vector<int>> Q_C = {
+    
+    //After trial and error I decided to utilize a single quantum value.
+    //I utilized the resouce below to better understand standard quantum matrices.
+    //I then create one that worked well with my DCT to limit the number of values which exceed the range of -127 and 127. 
+    //https://cs.stanford.edu/people/eroberts/courses/soco/projects/data-compression/lossy/jpeg/coeff.htm 
+    std::vector<std::vector<int>> Q = {
         {8,16,19,22,26,27,29,34},
         {16,16,22,24,27,29,34,37},
         {19,22,26,27,29,34,34,38},
@@ -309,14 +314,11 @@ int main(int argc, char** argv){
     };
     std::ofstream output_file{output_filename,std::ios::binary};
     OutputBitStream output_stream {output_file};
-
-    //Placeholder: Use a simple bitstream containing the height/width (in 32 bits each)
-    //followed by the entire set of values in each colour plane (in row major order).
+    //the next for loops allow us to change the quality setting of our Quantum based on the user input.
     if(quality == "low"){
         for(int i = 0; i< 8; i++){
             for(int j = 0; j<8; j++){
-                Q_l.at(i).at(j) = round(2*(Q_l.at(i).at(j)));
-                Q_C.at(i).at(j) = round(2*(Q_C.at(i).at(j))); 
+                Q.at(i).at(j) = round(2*(Q.at(i).at(j))); 
             }
         }
         output_stream.push_byte((unsigned char)0);
@@ -324,12 +326,16 @@ int main(int argc, char** argv){
     }else if(quality == "high"){
         for(int i = 0; i< 8; i++){
             for(int j = 0; j<8; j++){
-                Q_l.at(i).at(j) = (round(0.25*Q_l.at(i).at(j)));
-                Q_C.at(i).at(j) = (round(0.25*Q_C.at(i).at(j))); 
+                Q.at(i).at(j) = (round(0.2*Q.at(i).at(j)));
             }
         }
         output_stream.push_byte((unsigned char)2);
     }else{
+        for(int i = 0; i< 8; i++){
+            for(int j = 0; j<8; j++){
+                Q.at(i).at(j) = ((Q.at(i).at(j)+8));     
+            }
+        }
         output_stream.push_byte((unsigned char)1);
     }
     output_stream.push_u32(height);
@@ -341,7 +347,8 @@ int main(int argc, char** argv){
         for (unsigned int x = 0; x < width; x++){
             y_val.at(y).at(x) = imageYCbCr.at(y).at(x).Y;
         }
-    blocks(y_val, height, width, coeff, output_stream, Q_l,quality);
+    blocks(y_val, height, width, coeff, output_stream, Q,quality);
+    
     //Extract the Cb plane into its own array 
     auto Cb = create_2d_vector<unsigned char>(height,width);
     for(unsigned int y = 0; y < height; y++)
@@ -355,17 +362,11 @@ int main(int argc, char** argv){
         for (unsigned int x = 0; x < width; x++)
             Cr.at(y).at(x) = imageYCbCr.at(y).at(x).Cr;
     auto Cr_scaled = scale_down(Cr,width,height,2);
-    
-    //In decompressor keep a running total of the bits read for Y, cb, cr
-    //In decompressor with first 64 bits are size:
-    //Count for Y: ceil(width/8)*ceil(height/8)*64
-    //Count for Cb, Cr: ceil(((width+1)/2)/8)*ceil(((height+1)/2)/8)*64
-    //In the decoder for we will keep count so that we know when we have iterated through an entire block and moved to the next/finished.
     //Write the Cb values 
-    blocks(Cb_scaled, ((height+1)/2), ((width+1)/2), coeff, output_stream, Q_C, quality);
+    blocks(Cb_scaled, ((height+1)/2), ((width+1)/2), coeff, output_stream, Q, quality);
 
     //Write the Cr values 
-    blocks(Cr_scaled, ((height+1)/2), ((width+1)/2), coeff, output_stream, Q_C, quality);
+    blocks(Cr_scaled, ((height+1)/2), ((width+1)/2), coeff, output_stream, Q, quality);
 
     output_stream.flush_to_byte();
     output_file.close();

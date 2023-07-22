@@ -13,7 +13,11 @@
 
    B. Bird - 2023-07-03
 */
-
+/*
+Assignment 3: Image Compression Code
+Written By: Payton Murdoch
+Student Number: V00904677
+*/
 #include <iostream>
 #include <fstream>
 #include <array>
@@ -25,6 +29,7 @@
 #include "bitmap_image.hpp"
 #include "uvg_common.hpp"
 
+//Global vector which stores the encoding order for 8x8 Quantized DCT matrices.
 std::vector<std::pair<int, int>> E_O = {
     {0,0},{0,1},{1,0},{2,0},{1,1},{0,2},{0,3},{1,2},
     {2,1},{3,0},{4,0},{3,1},{2,2},{1,3},{0,4},{0,5},
@@ -35,6 +40,8 @@ std::vector<std::pair<int, int>> E_O = {
     {7,2},{7,3},{6,4},{5,5},{4,6},{3,7},{4,7},{5,6},
     {6,5},{7,4},{7,5},{6,6},{5,7},{6,7},{7,6},{7,7}
 };
+
+//Function for building the Coefficient matrix to utilize in quantization
 std::vector<std::vector<double>> Coeff(){
     auto results = create_2d_vector<double>(8,8);
     for(int i = 0; i < 8; i++){
@@ -49,6 +56,14 @@ std::vector<std::vector<double>> Coeff(){
     return results;
 }
 
+/*
+Note: There were interesting interactions which resulted in me creating 2 DCT functions.
+For the the High setting worked in a different way in comparison to the medium and low settings.
+This was found after many hours of trial and error in the debugging process. Utilizing the method:
+DCT(A) = CAC^T yielded a result in the high matrix which turned the entire image green.
+However, utilizing a method DCT(A) = ACC^T kept the matrices in tact. I cannot explain how this occured.
+Therefore to compensate for this we have inverse_DCT_low for medium and low values and inverse_DCT_high for the high setting values.  
+*/
 std::vector<std::vector<double>> inverse_DCT_low(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
     auto results = create_2d_vector<double>(8,8);
     auto temp = create_2d_vector<double>(8,8);
@@ -89,6 +104,9 @@ std::vector<std::vector<double>> inverse_DCT_high(std::vector<std::vector<int>> 
     return results;
 }
 
+//Main body for the code read_input reads the input until the associated matrix of size height and width is filled completely.
+//Number:length pair bytes are read and then stored in the encoded vector, once the encoded vector has enough entries for an 8x8 matrix they are offloaded into a DCT matrix.
+//DCT matrix is then inverted using our coefficient in the order based on the quality. Data is then rounded and bounded to the range 0-255 for image reconstruction.
 std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::vector<std::vector<int>> Q, std::vector<std::vector<double>> C, int height, int width, int quality){
     auto result = create_2d_vector<unsigned char>(height, width);
     int counter = 0;
@@ -117,7 +135,7 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
             }
             encoded.clear();
             auto data = create_2d_vector<double>(8,8);
-            if(quality == 0){
+            if(quality != 2){
                 data = inverse_DCT_low(DCT, C);
             }else{
                 data = inverse_DCT_high(DCT, C);
@@ -162,17 +180,11 @@ int main(int argc, char** argv){
     std::ifstream input_file{input_filename,std::ios::binary};
     InputBitStream input_stream {input_file};
     unsigned int quality = input_stream.read_byte();
-    std::vector<std::vector<int>> Q_l = {
-        {16,11,10,16,24,40,51,61},
-        {12,12,14,19,26,58,60,55},
-        {14,13,16,24,40,57,69,56},
-        {14,17,22,29,51,87,80,62},
-        {18,22,37,56,68,109,103,77},
-        {24,35,55,64,81,104,113,92},
-        {49,64,78,87,103,121,120,101},
-        {72,92,95,98,112,100,103,99}
-    };
-    std::vector<std::vector<int>> Q_C = {
+    //After trial and error I decided to utilize a single quantum value.
+    //I utilized the resouce below to better understand standard quantum matrices.
+    //I then create one that worked well with my DCT to limit the number of values which exceed the range of -127 and 127. 
+    //https://cs.stanford.edu/people/eroberts/courses/soco/projects/data-compression/lossy/jpeg/coeff.htm 
+    std::vector<std::vector<int>> Q = {
         {8,16,19,22,26,27,29,34},
         {16,16,22,24,27,29,34,37},
         {19,22,26,27,29,34,34,38},
@@ -182,18 +194,23 @@ int main(int argc, char** argv){
         {26,27,29,34,38,46,56,69},
         {27,29,35,38,46,56,69,83}
     };
+    //the next for loops allow us to change the quality setting of our Quantum based on the user input.
     if(quality == 0){
         for(int i = 0; i< 8; i++){
             for(int j = 0; j<8; j++){
-                Q_l.at(i).at(j) = round((2*Q_l.at(i).at(j)));
-                Q_C.at(i).at(j) = round((2*Q_C.at(i).at(j))); 
+                Q.at(i).at(j) = (2*Q.at(i).at(j));
             }
         }
     }else if(quality == 2){
         for(int i = 0; i< 8; i++){
             for(int j = 0; j<8; j++){
-                Q_l.at(i).at(j) = (round((0.25*Q_l.at(i).at(j))));
-                Q_C.at(i).at(j) = (round((0.25*Q_C.at(i).at(j)))); 
+                Q.at(i).at(j) = (round((0.2*Q.at(i).at(j)))); 
+            }
+        }
+    }else{
+        for(int i = 0; i< 8; i++){
+            for(int j = 0; j<8; j++){
+                Q.at(i).at(j) = ((Q.at(i).at(j)+8));    
             }
         }
     }
@@ -203,10 +220,13 @@ int main(int argc, char** argv){
     auto Y = create_2d_vector<unsigned char>(height,width);
     auto Cb_scaled = create_2d_vector<unsigned char>((height+1)/2,(width+1)/2);
     auto Cr_scaled = create_2d_vector<unsigned char>((height+1)/2,(width+1)/2);
-    
-    Y = read_input(input_stream, Q_l, coeff,height, width, quality);
-    Cb_scaled = read_input(input_stream, Q_C, coeff,((height+1)/2),((width+1)/2), quality);
-    Cr_scaled = read_input(input_stream, Q_C, coeff,((height+1)/2),((width+1)/2), quality);    
+    //Build Y matrix.
+    Y = read_input(input_stream, Q, coeff,height, width, quality);
+    //Build Cb matrix.
+    Cb_scaled = read_input(input_stream, Q, coeff,((height+1)/2),((width+1)/2), quality);
+    //Build Cr matrix.
+    Cr_scaled = read_input(input_stream, Q, coeff,((height+1)/2),((width+1)/2), quality);    
+    //Rebuild image.
     auto imageYCbCr = create_2d_vector<PixelYCbCr>(height,width);
     for (unsigned int y = 0; y < height; y++){
         for (unsigned int x = 0; x < width; x++){
