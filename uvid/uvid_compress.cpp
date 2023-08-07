@@ -195,47 +195,95 @@ void rle(std::vector<int> data, OutputBitStream stream){
     }
 }
 
+std::vector<int> P_or_IFrame(std::vector<int> P, std::vector<int> I, OutputBitStream stream){
+    std::vector<int> result;
+    int count_p = 0;
+    int count_i = 0;
+    int run_p = 0;
+    int run_i = 0;
+    for(int i = 0; i<64; i++){
+        if(i == 0){
+            run_p = P.at(i);
+            run_i = I.at(i);
+        }else{
+            if(run_i == I.at(i)){
+                count_i++;
+            }else{
+                run_i = I.at(i);
+            }
+            if(run_p == P.at(i)){
+                count_p++;
+            }else{
+                run_p = P.at(i);
+            }
+        }
+    }
+    if(count_p >count_i){
+        result = P;
+        stream.push_byte(1);
+    }else{
+        result = I;
+        stream.push_byte(0);
+    }
+    return result;
+}
 //Main body of code, blocks takes the input and parses them into 8x8 blocks for the dct and quantization operations to occur.
 //In this function the block is placed into encoding order and then RLE is done before the block is streamed into the file.
-void blocks(std::vector<std::vector<int>> data, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream, std::vector<std::vector<int>> Q, std::string quality){
+void blocks(std::vector<std::vector<int>> data, std::vector<std::vector<int>>previous, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream, std::vector<std::vector<int>> Q, std::string quality){
     int recorded_x = 0;
     int recorded_y = 0;
     while(true){
         auto temporary = create_2d_vector<int>(8,8);
+        auto previous_temp = create_2d_vector<int>(8,8);
         std::vector<int> prev_row;
+        std::vector<int> previous_p_row;
         int prev = -1;
+        int previous_p = -1;
         for(int i = 0; i<8; i++){
             for(int j = 0; j < 8; j++){
                 if(recorded_y+i < height){
                     if(recorded_x+j < width){
                         temporary.at(i).at(j) = data.at(recorded_y+i).at(recorded_x+j);
+                        previous_temp.at(i).at(j) = data.at(recorded_y+i).at(recorded_x+j)-previous.at(recorded_y+i).at(recorded_x+j);
                         prev = temporary.at(i).at(j);
+                        previous_p = previous_temp.at(i).at(j);
                         if(prev_row.size() == 8){
                             prev_row.clear();
+                            previous_p_row.clear();
                         }
                         prev_row.push_back(temporary.at(i).at(j));
+                        previous_p_row.push_back(previous_temp.at(i).at(j));
                     }else{
                         if(prev != -1){
                             temporary.at(i).at(j) = prev;
+                            previous_temp.at(i).at(j) = previous_p;
                             prev_row.push_back(prev);
+                            previous_p_row.push_back(previous_p);
                         }
                     }
                 }else{
                     for(int k = 0; k< 8; k++){
                         temporary.at(i).at(k) = prev_row.at(k);
+                        previous_temp.at(i).at(k) = previous_p_row.at(k);
                     }
                 }
             }
         }
+        auto prev_dct_block = create_2d_vector<double>(8,8);
         auto dct_block = create_2d_vector<double>(8,8);
         if(quality=="high"){
             dct_block = DCT_high(temporary, c);
+            prev_dct_block = DCT_high(previous_temp,c);
         }else{
             dct_block = DCT_low(temporary, c);
+            prev_dct_block = DCT_low(previous_temp,c);
         }
         std::vector<std::vector<int>> quantum = Quantized(dct_block, Q);
+        std::vector<std::vector<int>> quantum_p = Quantized(prev_dct_block, Q);
         std::vector<int> encoding = E_O(quantum);
-        rle(encoding, stream);
+        std::vector<int> encoding_p = E_O(quantum_p);
+        std::vector<int> better = P_or_IFrame(encoding_p, encoding, stream);
+        rle(better, stream);
         if(recorded_x+8 >=width){
             if(recorded_y+8 >=height){
                 break;
@@ -305,7 +353,9 @@ int main(int argc, char** argv){
 
     output_stream.push_u32(height);
     output_stream.push_u32(width);
-
+    auto y_p = create_2d_vector<int>(height, width);
+    auto cb_p = create_2d_vector<int>((height/2),(width/2));
+    auto cr_p = create_2d_vector<int>((height/2),(width/2));
     while (reader.read_next_frame()){
         output_stream.push_byte(1); //Use a one byte flag to indicate whether there is a frame here
         YUVFrame420& frame = reader.frame();
@@ -313,17 +363,20 @@ int main(int argc, char** argv){
         for (u32 y = 0; y < height; y++)
             for (u32 x = 0; x < width; x++)
                 y_val.at(y).at(x) = frame.Y(x,y);
-        blocks(y_val, height, width, coeff, output_stream, Q, quality);
+        blocks(y_val, y_p, height, width, coeff, output_stream, Q, quality);
+        y_p = y_val;
         auto Cb = create_2d_vector<int>((height/2),(width/2));
         for (u32 y = 0; y < height/2; y++)
             for (u32 x = 0; x < width/2; x++)
                 Cb.at(y).at(x) = frame.Cb(x,y);
-        blocks(Cb, ((height)/2), ((width)/2), coeff, output_stream, Q, quality);
+        blocks(Cb, cb_p, ((height)/2), ((width)/2), coeff, output_stream, Q, quality);
+        cb_p = Cb;
         auto Cr = create_2d_vector<int>((height/2),(width/2));
         for (u32 y = 0; y < height/2; y++)
             for (u32 x = 0; x < width/2; x++)
                 Cr.at(y).at(x) = frame.Cr(x,y);
-        blocks(Cr, ((height)/2), ((width)/2), coeff, output_stream, Q, quality);
+        blocks(Cr, cr_p, ((height)/2), ((width)/2), coeff, output_stream, Q, quality);
+        cr_p = Cr;
     }
 
     output_stream.push_byte(0); //Flag to indicate end of data

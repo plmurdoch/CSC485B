@@ -111,12 +111,13 @@ std::vector<std::vector<double>> inverse_DCT_high(std::vector<std::vector<int>> 
 //Main body for the code read_input reads the input until the associated matrix of size height and width is filled completely.
 //Number:length pair bytes are read and then stored in the encoded vector, once the encoded vector has enough entries for an 8x8 matrix they are offloaded into a DCT matrix.
 //DCT matrix is then inverted using our coefficient in the order based on the quality. Data is then rounded and bounded to the range 0-255 for image reconstruction.
-std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::vector<std::vector<int>> Q, std::vector<std::vector<double>> C, int height, int width, int quality){
+std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::vector<std::vector<unsigned char>> previous, std::vector<std::vector<int>> Q, std::vector<std::vector<double>> C, int height, int width, int quality){
     auto result = create_2d_vector<unsigned char>(height, width);
     int counter = 0;
     std::vector<unsigned char> encoded;
     int recorded_y = 0;
     int recorded_x = 0;
+    int prev = input.read_byte();
     while(true){
         unsigned char num = input.read_byte();
         encoded.push_back(num);
@@ -148,7 +149,13 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                 for(int x = 0; x<8; x++){
                     if((y+recorded_y) < height){
                         if((x+recorded_x) < width){
-                            int dat = round(data.at(y).at(x));
+                            int dat = 0;
+                            if(prev == 1){
+                                dat = round(data.at(y).at(x)+previous.at(y+recorded_y).at(x+recorded_x));
+                            }
+                            else{
+                                dat = round(data.at(y).at(x));
+                            }
                             if(dat >255){
                                 dat = 255;
                             }else if(dat <0){
@@ -170,6 +177,7 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                 recorded_x = 0;
                 recorded_y += 8;
             }
+            prev = input.read_byte();
         }
     }
 }
@@ -220,16 +228,22 @@ int main(int argc, char** argv){
     u32 height {input_stream.read_u32()};
     u32 width {input_stream.read_u32()};
     YUVStreamWriter writer {std::cout, width, height};
+    auto y_p = create_2d_vector<unsigned char>(height,width);
+    auto cb_p = create_2d_vector<unsigned char>((height)/2,(width)/2);
+    auto cr_p = create_2d_vector<unsigned char>((height)/2,(width)/2);
     while (input_stream.read_byte()){
         auto Y = create_2d_vector<unsigned char>(height,width);
         auto Cb = create_2d_vector<unsigned char>((height)/2,(width)/2);
         auto Cr = create_2d_vector<unsigned char>((height)/2,(width)/2);
         //Build Y matrix.
-        Y = read_input(input_stream, Q, coeff,height, width, quality);
+        Y = read_input(input_stream,y_p, Q, coeff,height, width, quality);
+        y_p = Y;
         //Build Cb matrix.
-        Cb = read_input(input_stream, Q, coeff,((height)/2),((width)/2), quality);
+        Cb = read_input(input_stream,cb_p, Q, coeff,((height)/2),((width)/2), quality);
+        cb_p = Cb;
         //Build Cr matrix.
-        Cr = read_input(input_stream, Q, coeff,((height)/2),((width)/2), quality);
+        Cr = read_input(input_stream, cr_p, Q, coeff,((height)/2),((width)/2), quality);
+        cr_p = Cr;
         YUVFrame420& frame = writer.frame();
         for (u32 y = 0; y < height; y++)
             for (u32 x = 0; x < width; x++)
