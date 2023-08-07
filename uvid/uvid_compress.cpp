@@ -36,13 +36,13 @@ std::vector<std::vector<T> > create_2d_vector(unsigned int outer, unsigned int i
 
 //Make into matrix so that it only needs to be computed once instead of multiple computations and function calls.
 std::vector<std::vector<double>> Coeff(){
-    auto results = create_2d_vector<double>(8,8);
-    for(int i = 0; i < 8; i++){
-        for(int j = 0; j < 8; j++){
+    auto results = create_2d_vector<double>(16,16);
+    for(int i = 0; i < 16; i++){
+        for(int j = 0; j < 16; j++){
             if(i == 0){
-                results.at(i).at(j) = sqrt(0.125);
+                results.at(i).at(j) = sqrt(0.0625);
             }else{
-                results.at(i).at(j) = (sqrt((0.25))*cos((((2.00*j)+1.00)*i*M_PI)/16.00));
+                results.at(i).at(j) = (sqrt((0.125))*cos((((2.00*j)+1.00)*i*M_PI)/32.00));
             }
         }
     }
@@ -59,18 +59,18 @@ Therefore to compensate for this we have DCT_low for medium and low values and D
 */
 //Compute DCT(A) = matrix(C)*matrix(A)*matrix(C transpose) and store in results; 
 std::vector<std::vector<double>> DCT_low(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
-    auto results = create_2d_vector<double>(8,8);
-    auto temp = create_2d_vector<double>(8,8);
-    for(int i = 0; i< 8; i++){
-        for(int j = 0; j<8; j++){
-            for(int x = 0; x<8; x++){
+    auto results = create_2d_vector<double>(16,16);
+    auto temp = create_2d_vector<double>(16,16);
+    for(int i = 0; i< 16; i++){
+        for(int j = 0; j<16; j++){
+            for(int x = 0; x<16; x++){
                 temp.at(i).at(j) += (data.at(x).at(j)*c.at(i).at(x));
             }
         }
     }
-    for(int i = 0; i< 8; i++){
-        for(int j = 0; j<8; j++){
-            for(int x = 0; x<8; x++){
+    for(int i = 0; i< 16; i++){
+        for(int j = 0; j<16; j++){
+            for(int x = 0; x<16; x++){
                 results.at(i).at(j) += (temp.at(i).at(x)*c.at(j).at(x)); //for c transpose
             }
         }
@@ -79,18 +79,18 @@ std::vector<std::vector<double>> DCT_low(std::vector<std::vector<int>> data, std
 }
 
 std::vector<std::vector<double>> DCT_high(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
-    auto results = create_2d_vector<double>(8,8);
-    auto temp = create_2d_vector<double>(8,8);
-    for(int i = 0; i< 8; i++){
-        for(int j = 0; j<8; j++){
-            for(int x = 0; x<8; x++){
+    auto results = create_2d_vector<double>(16,16);
+    auto temp = create_2d_vector<double>(16,16);
+    for(int i = 0; i< 16; i++){
+        for(int j = 0; j<16; j++){
+            for(int x = 0; x<16; x++){
                 temp.at(i).at(j) += (data.at(i).at(x)*c.at(x).at(j));
             }
         }
     }
-    for(int i = 0; i< 8; i++){
-        for(int j = 0; j<8; j++){
-            for(int x = 0; x<8; x++){
+    for(int i = 0; i< 16; i++){
+        for(int j = 0; j<16; j++){
+            for(int x = 0; x<16; x++){
                 results.at(i).at(j) += (temp.at(i).at(x)*c.at(j).at(x)); //for c transpose
             }
         }
@@ -100,9 +100,9 @@ std::vector<std::vector<double>> DCT_high(std::vector<std::vector<int>> data, st
 
 //Quantized values are rounded and clamped within the (-127,127) range so that they can be output as bytes in 0-255 range.
 std::vector<std::vector<int>> Quantized(std::vector<std::vector<double>> data, std::vector<std::vector<int>> Q){
-    auto results = create_2d_vector<int>(8,8);
-    for(int i = 0; i<8; i++){
-        for(int j = 0; j <8; j++){
+    auto results = create_2d_vector<int>(16,16);
+    for(int i = 0; i<16; i++){
+        for(int j = 0; j <16; j++){
             int dat = round((data.at(i).at(j)/Q.at(i).at(j)));
             if(dat < -127){
                 dat = 0;
@@ -122,10 +122,10 @@ std::vector<int> E_O(std::vector<std::vector<int>> data){
     std::vector<int> results;
     int count = 0;
     int reverse = 1;
-    while(count <= 14){
+    while(count <= 30){
         int i = 0;
         int j = 0;
-        if(count < 8){
+        if(count < 16){
             if((count % 2) == 0){
                 i = count;
                 j = 0;
@@ -146,16 +146,16 @@ std::vector<int> E_O(std::vector<std::vector<int>> data){
         }
         else{
             if((count % 2) == 0){
-                i = 7;
-                j = count-7;
+                i = 15;
+                j = count-15;
                 for(int k = 0; k < (count-reverse); k++){
                     results.push_back(data.at(i).at(j));
                     i-=1;
                     j+=1;
                 }
             }else{
-                i = count - 7;
-                j = 7;
+                i = count - 15;
+                j = 15;
                 for(int k = 0; k <(count-reverse); k++){
                     results.push_back(data.at(i).at(j));
                     i+=1;
@@ -201,7 +201,7 @@ std::vector<int> P_or_IFrame(std::vector<int> P, std::vector<int> I, OutputBitSt
     int count_i = 0;
     int run_p = 0;
     int run_i = 0;
-    for(int i = 0; i<64; i++){
+    for(int i = 0; i<256; i++){
         if(i == 0){
             run_p = P.at(i);
             run_i = I.at(i);
@@ -233,21 +233,21 @@ void blocks(std::vector<std::vector<int>> data, std::vector<std::vector<int>>pre
     int recorded_x = 0;
     int recorded_y = 0;
     while(true){
-        auto temporary = create_2d_vector<int>(8,8);
-        auto previous_temp = create_2d_vector<int>(8,8);
+        auto temporary = create_2d_vector<int>(16,16);
+        auto previous_temp = create_2d_vector<int>(16,16);
         std::vector<int> prev_row;
         std::vector<int> previous_p_row;
         int prev = -1;
         int previous_p = -1;
-        for(int i = 0; i<8; i++){
-            for(int j = 0; j < 8; j++){
+        for(int i = 0; i<16; i++){
+            for(int j = 0; j < 16; j++){
                 if(recorded_y+i < height){
                     if(recorded_x+j < width){
                         temporary.at(i).at(j) = data.at(recorded_y+i).at(recorded_x+j);
                         previous_temp.at(i).at(j) = data.at(recorded_y+i).at(recorded_x+j)-previous.at(recorded_y+i).at(recorded_x+j);
                         prev = temporary.at(i).at(j);
                         previous_p = previous_temp.at(i).at(j);
-                        if(prev_row.size() == 8){
+                        if(prev_row.size() == 16){
                             prev_row.clear();
                             previous_p_row.clear();
                         }
@@ -262,15 +262,15 @@ void blocks(std::vector<std::vector<int>> data, std::vector<std::vector<int>>pre
                         }
                     }
                 }else{
-                    for(int k = 0; k< 8; k++){
+                    for(int k = 0; k< 16; k++){
                         temporary.at(i).at(k) = prev_row.at(k);
                         previous_temp.at(i).at(k) = previous_p_row.at(k);
                     }
                 }
             }
         }
-        auto prev_dct_block = create_2d_vector<double>(8,8);
-        auto dct_block = create_2d_vector<double>(8,8);
+        auto prev_dct_block = create_2d_vector<double>(16,16);
+        auto dct_block = create_2d_vector<double>(16,16);
         if(quality=="high"){
             dct_block = DCT_high(temporary, c);
             prev_dct_block = DCT_high(previous_temp,c);
@@ -284,15 +284,15 @@ void blocks(std::vector<std::vector<int>> data, std::vector<std::vector<int>>pre
         std::vector<int> encoding_p = E_O(quantum_p);
         std::vector<int> better = P_or_IFrame(encoding_p, encoding, stream);
         rle(better, stream);
-        if(recorded_x+8 >=width){
-            if(recorded_y+8 >=height){
+        if(recorded_x+16 >=width){
+            if(recorded_y+16 >=height){
                 break;
             }else{
                 recorded_x = 0;
-                recorded_y += 8;
+                recorded_y += 16;
             }
         }else{
-            recorded_x += 8;
+            recorded_x += 16;
         }
     }
 }
@@ -317,34 +317,42 @@ int main(int argc, char** argv){
     //I then create one that worked well with my DCT to limit the number of values which exceed the range of -127 and 127. 
     //https://cs.stanford.edu/people/eroberts/courses/soco/projects/data-compression/lossy/jpeg/coeff.htm 
     std::vector<std::vector<int>> Q = {
-        {8,16,19,22,26,27,29,34},
-        {16,16,22,24,27,29,34,37},
-        {19,22,26,27,29,34,34,38},
-        {22,22,26,27,29,34,37,40},
-        {22,26,27,29,32,35,40,48},
-        {26,27,29,32,35,40,48,58},
-        {26,27,29,34,38,46,56,69},
-        {27,29,35,38,46,56,69,83}
+        {192, 128, 128, 192, 256, 384, 512, 640, 768, 896, 1024, 1152, 1280, 1408, 1536, 1664},
+        {128, 128, 192, 256, 384, 512, 640, 768, 896, 1024, 1152, 1280, 1408, 1536, 1664, 1792},
+        {128, 192, 256, 384, 512, 640, 768, 896, 1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920},
+        {192, 256, 384, 512, 640, 768, 896, 1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048},
+        {256, 384, 512, 640, 768, 896, 1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048, 2176},
+        {384, 512, 640, 768, 896, 1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048, 2176, 2304},
+        {512, 640, 768, 896, 1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048, 2176, 2304, 2432},
+        {640, 768, 896, 1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048, 2176, 2304, 2432, 2560},
+        {768, 896, 1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048, 2176, 2304, 2432, 2560, 2688},
+        {896, 1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048, 2176, 2304, 2432, 2560, 2688, 2816},
+        {1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048, 2176, 2304, 2432, 2560, 2688, 2816, 2944},
+        {1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048, 2176, 2304, 2432, 2560, 2688, 2816, 2944, 3072},
+        {1280, 1408, 1536, 1664, 1792, 1920, 2048, 2176, 2304, 2432, 2560, 2688, 2816, 2944, 3072, 3200},
+        {1408, 1536, 1664, 1792, 1920, 2048, 2176, 2304, 2432, 2560, 2688, 2816, 2944, 3072, 3200, 3328},
+        {1536, 1664, 1792, 1920, 2048, 2176, 2304, 2432, 2560, 2688, 2816, 2944, 3072, 3200, 3328, 3456},
+        {1664, 1792, 1920, 2048, 2176, 2304, 2432, 2560, 2688, 2816, 2944, 3072, 3200, 3328, 3456, 3584}
     };
     //the next for loops allow us to change the quality setting of our Quantum based on the user input.
     if(quality == "low"){
-        for(int i = 0; i< 8; i++){
-            for(int j = 0; j<8; j++){
+        for(int i = 0; i< 16; i++){
+            for(int j = 0; j<16; j++){
                 Q.at(i).at(j) = round(2*(Q.at(i).at(j))); 
             }
         }
         output_stream.push_byte((unsigned char)0);
         
     }else if(quality == "high"){
-        for(int i = 0; i< 8; i++){
-            for(int j = 0; j<8; j++){
+        for(int i = 0; i< 16; i++){
+            for(int j = 0; j<16; j++){
                 Q.at(i).at(j) = (round(0.2*Q.at(i).at(j)));
             }
         }
         output_stream.push_byte((unsigned char)2);
     }else{
-        for(int i = 0; i< 8; i++){
-            for(int j = 0; j<8; j++){
+        for(int i = 0; i<16; i++){
+            for(int j = 0; j<16; j++){
                 Q.at(i).at(j) = ((Q.at(i).at(j)+8));     
             }
         }
