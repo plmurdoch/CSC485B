@@ -251,7 +251,6 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                 }
             }
         }
-        std::cerr<<encoded.size()<<std::endl;
         int encoded_size = encoded.size();
         if(encoded_size == 64){
             auto DCT = create_2d_vector<int>(8,8);

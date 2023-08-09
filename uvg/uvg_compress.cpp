@@ -184,7 +184,6 @@ void rle(std::vector<int> data, OutputBitStream stream){
     buffer.push_back(1);
     for(int i = 0; i<size; i++){
         int output = data.at(i);
-        std::cerr<<output<<":";
         std::vector<int> temp;
         for(int j = 0; j<8; j++){
             temp.push_back((output%2));
@@ -208,7 +207,6 @@ void rle(std::vector<int> data, OutputBitStream stream){
             }
         }
         if(count == 0){
-            std::cerr<<"0"<<std::endl;
             buffer.push_back(0);
             if(buffer.size() == 8){
                 Offload(buffer, stream);
@@ -216,7 +214,6 @@ void rle(std::vector<int> data, OutputBitStream stream){
             }
         }else{
             int bits = ceil(log2(count+1));
-            std::cerr<<bits<<":";
             for(int j = 0; j<bits; j++){
                 buffer.push_back(1);
                 if(buffer.size() == 8){
@@ -235,7 +232,6 @@ void rle(std::vector<int> data, OutputBitStream stream){
                 temp.push_back(temp_count%2);
                 temp_count = floor(temp_count/2);
             }
-            std::cerr<<count<<std::endl;
             for(int j = bits-2; j>= 0; j--){
                 buffer.push_back(temp.at(j));
                 if(buffer.size() == 8){
