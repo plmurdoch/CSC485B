@@ -166,13 +166,37 @@ std::vector<int> E_O(std::vector<std::vector<int>> data){
     return results;
 }
 
+void Offload(std::vector<int> to_output, OutputBitStream stream){
+    int final_num = 0; 
+    int count = 0;
+    for(int i = 7; i>= 0; i--){
+        final_num += to_output.at(i)*pow(2,count);
+        count++;
+    }
+    unsigned char output = final_num;
+    stream.push_byte(output);
+}
 //RLE encoding using basic implementation outputing num:length pairs with each entry of the pair utilizing 8 bits.
 //Will be improved in Assignment 4, however, my other implementation for Variable length RLE was not working properly.
 void rle(std::vector<int> data, OutputBitStream stream){
     int size = data.size();
+    std::vector<int> buffer;
+    buffer.push_back(1);
     for(int i = 0; i<size; i++){
-        unsigned char output = data.at(i);
-        stream.push_byte(output);
+        int output = data.at(i);
+        std::cerr<<output<<":";
+        std::vector<int> temp;
+        for(int j = 0; j<8; j++){
+            temp.push_back((output%2));
+            output = floor(output/2);
+        }
+        for(int j =7; j>=0; j--){
+            buffer.push_back(temp.at(j));
+            if(buffer.size() == 8){
+                Offload(buffer, stream);
+                buffer.clear();
+            }
+        }
         int j = i+1;
         int count = 0;
         while(j < size){
@@ -184,11 +208,49 @@ void rle(std::vector<int> data, OutputBitStream stream){
             }
         }
         if(count == 0){
-            stream.push_byte((unsigned char)0);
+            std::cerr<<"0"<<std::endl;
+            buffer.push_back(0);
+            if(buffer.size() == 8){
+                Offload(buffer, stream);
+                buffer.clear();
+            }
         }else{
-            stream.push_byte((unsigned char)count);
+            int bits = ceil(log2(count+1));
+            std::cerr<<bits<<":";
+            for(int j = 0; j<bits; j++){
+                buffer.push_back(1);
+                if(buffer.size() == 8){
+                    Offload(buffer, stream);
+                    buffer.clear();
+                }
+            }
+            buffer.push_back(0);
+            if(buffer.size() == 8){
+                Offload(buffer, stream);
+                buffer.clear();
+            }
+            std::vector<int> temp;
+            int temp_count = count;
+            for(int j =0; j<bits-1; j++){
+                temp.push_back(temp_count%2);
+                temp_count = floor(temp_count/2);
+            }
+            std::cerr<<count<<std::endl;
+            for(int j = bits-2; j>= 0; j--){
+                buffer.push_back(temp.at(j));
+                if(buffer.size() == 8){
+                    Offload(buffer, stream);
+                    buffer.clear();
+                }
+            }
             i += count;
         }
+    }
+    if(buffer.size() != 0){
+        while(buffer.size()<8){
+            buffer.push_back(0);
+        }
+        Offload(buffer,stream);
     }
 }
 
