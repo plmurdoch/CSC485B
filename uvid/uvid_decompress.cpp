@@ -126,6 +126,9 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
     int recorded_y = 0;
     int recorded_x = 0;
     int first_bit = -1;
+    int second_bit = -1;
+    int x_val = -1;
+    int y_val = -1;
     std::vector<int> bit_buffer;
     while(true){
         std::vector<int> num;
@@ -137,10 +140,43 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                 to_parse = floor(to_parse/2);
             }
             first_bit = first_bin.at(7);
-            int count = 6;
-            while(count >=0){
-                num.push_back(first_bin.at(count));
-                count--;
+            second_bit = first_bin.at(6);
+            if(first_bit == 1){
+                int count = 5;
+                std::vector<int> x_store;
+                while(count >=0){
+                    x_store.push_back(first_bin.at(count));
+                    count--;
+                }
+                int next_byte = input.read_byte();
+                std::vector<int> second_bin;
+                for(int i = 0; i<8; i++){
+                    second_bin.push_back(next_byte%2);
+                    next_byte = floor(next_byte/2);
+                }
+                x_store.push_back(second_bin.at(7));
+                count = 6;
+                std::vector<int> y_store;
+                while(count>= 0){
+                    y_store.push_back(second_bin.at(count));
+                    count--;
+                }
+                int x_number = 0;
+                int y_number = 0;
+                int exp = 0;
+                for(int i = 7; i>= 0; i--){
+                    x_number+= x_store.at(i)*pow(2,exp);
+                    y_number+= y_store.at(i)*pow(2,exp);
+                    exp++;
+                }
+                x_val = x_number-8;
+                y_val = y_number-8;
+            }else{
+                int count = 5;
+                while(count >=0){
+                    num.push_back(first_bin.at(count));
+                    count--;
+                }
             }
         }else{
             if(!bit_buffer.empty()){
@@ -286,8 +322,11 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                     if((y+recorded_y) < height){
                         if((x+recorded_x) < width){
                             int dat = 0;
-                            if(first_bit == 1){
+                            if(first_bit == 0 && second_bit == 1){
                                 dat = round(data.at(y).at(x)+previous.at(y+recorded_y).at(x+recorded_x));
+                            }
+                            else if(first_bit == 1 && second_bit == 0){
+                                dat = round(data.at(y).at(x)+previous.at(y+recorded_y+y_val).at(x+recorded_x+x_val));
                             }
                             else{
                                 dat = round(data.at(y).at(x));
