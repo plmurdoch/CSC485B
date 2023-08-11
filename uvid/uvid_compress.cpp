@@ -197,14 +197,14 @@ void rle(std::vector<int> data, OutputBitStream stream, int frame, std::pair<int
             x = floor(x/2);
             y=floor(y/2);
         }
-        for(int j =6; j>=0; j--){
+        for(int j =5; j>=0; j--){
             buffer.push_back(temp_x.at(j));
             if(buffer.size() == 8){
                 Offload(buffer, stream);
                 buffer.clear();
             }
         }
-        for(int j =6; j>=0; j--){
+        for(int j =5; j>=0; j--){
             buffer.push_back(temp_y.at(j));
             if(buffer.size() == 8){
                 Offload(buffer, stream);
