@@ -187,10 +187,8 @@ void rle(std::vector<int> data, OutputBitStream stream, int frame, std::pair<int
     if(frame == 2){
         buffer.push_back(1);
         buffer.push_back(0);
-        int x = x_y.first;
-        std::cerr<<x<<":";
-        int y = x_y.second;
-        std::cerr<<y<<std::endl;
+        int x = x_y.first + 16;
+        int y = x_y.second + 16;
         std::vector<int> temp_x;
         std::vector<int> temp_y;
         for(int j = 0; j<7; j++){
@@ -288,7 +286,7 @@ void rle(std::vector<int> data, OutputBitStream stream, int frame, std::pair<int
     }
 }
 
-std::pair<std::vector<int>,int> P_or_IFrame(std::vector<int> V,std::vector<int> P, std::vector<int> I){
+std::pair<std::vector<int>,int> P_or_IFrame(std::vector<int> V,std::vector<int> P, std::vector<int> I, std::pair<int,int> x_y){
     std::vector<int> result;
     int count_p = 0;
     int count_i = 0;
@@ -296,39 +294,67 @@ std::pair<std::vector<int>,int> P_or_IFrame(std::vector<int> V,std::vector<int> 
     int run_p = 0;
     int run_i = 0;
     int run_v = 0;
-    for(int i = 0; i<256; i++){
-        if(i == 0){
-            run_p = P.at(i);
-            run_i = I.at(i);
-            run_v = V.at(i);
-        }else{
-            if(run_i == I.at(i)){
-                count_i++;
-            }else{
-                run_i = I.at(i);
-            }
-            if(run_p == P.at(i)){
-                count_p++;
-            }else{
+    if(x_y.first != 0 && x_y.second != 0){
+        for(int i = 0; i<256; i++){
+            if(i == 0){
                 run_p = P.at(i);
-            }
-            if(run_v == V.at(i)){
-                count_v++;
-            }else{
+                run_i = I.at(i);
                 run_v = V.at(i);
+            }else{
+                if(run_i == I.at(i)){
+                    count_i++;
+                }else{
+                    run_i = I.at(i);
+                }
+                if(run_p == P.at(i)){
+                    count_p++;
+                }else{
+                    run_p = P.at(i);
+                }
+                if(run_v == V.at(i)){
+                    count_v++;
+                }else{
+                    run_v = V.at(i);
+                }
             }
         }
-    }
-    if(count_p >count_i){
-        result = P;
-        return std::make_pair(result,1);
-    /*}else if(count_v >count_i && count_v >count_p){
-        result = V;
-        return std::make_pair(result, 2);*/
+        if(count_p >count_i && count_p >count_v){
+            result = P;
+            return std::make_pair(result,1);
+        }else if(count_v >count_i && count_v >count_p){
+            result = V;
+            return std::make_pair(result, 2);
+        }else{
+            result = I;
+            return std::make_pair(result, 0);
+        }
     }else{
-        result = I;
-        return std::make_pair(result, 0);
+        for(int i = 0; i<256; i++){
+            if(i == 0){
+                run_p = P.at(i);
+                run_i = I.at(i);
+            }else{
+                if(run_i == I.at(i)){
+                    count_i++;
+                }else{
+                    run_i = I.at(i);
+                }
+                if(run_p == P.at(i)){
+                    count_p++;
+                }else{
+                    run_p = P.at(i);
+                }
+            }
+        }
+        if(count_p >count_i){
+            result = P;
+            return std::make_pair(result,1);
+        }else{
+            result = I;
+            return std::make_pair(result, 0);
+        }
     }
+    
 }
 /*
 For P-frame calculations 
@@ -374,33 +400,58 @@ std::vector<std::vector<double>> inverse_DCT_high(std::vector<std::vector<int>> 
 }
 
 std::pair<std::vector<std::vector<int>>,std::pair<int,int>> MotionVector(int x_val, int y_val, int height, int width, std::vector<std::vector<int>> previous, std::vector<std::vector<int>> data){
-    int starting_x = 0;
-    if(x_val < 8){
-        starting_x = 0;
-    }else if(x_val >(width-72)){
-        starting_x = (width-80);
+    int count = 0;
+    int start_x = x_val; 
+    int end_x = 0;
+    if(start_x < 8){
+        while(start_x > 0){
+            count++;
+            start_x--;
+        }
+        end_x = start_x+(32-count);
+    }else if(start_x > width-24){
+        end_x = start_x;
+        while(end_x < width){
+            count++;
+            end_x++;
+        }
+        start_x = width - count -(32-count);
     }else{
-        starting_x = (x_val-8);
+        start_x = x_val -8;
+        end_x = x_val +24;
     }
-    int starting_y = 0;
-    if(y_val < 8){
-        starting_y = 0;
-    }else if(y_val >(height-72)){
-        starting_y = (height-80);
+    int count2 = 0;
+    int start_y = y_val; 
+    int end_y = 0;
+    if(start_y < 8){
+        while(start_y > 0){
+            count2++;
+            start_y--;
+        }
+        end_y = start_y+ (32-count2);
+    }else if(start_y > height-24){
+        end_y = start_y;
+        while(end_y < height){
+            count2++;
+            end_y++;
+        }
+        start_y = height - count2 -(32-count2);
     }else{
-        starting_y = y_val-8;
+        start_y = y_val -8;
+        end_y = y_val +24;
     }
-    int min_x = -1;
-    int min_y = -1;
-    double MSD = -1;
     auto result = create_2d_vector<int>(16,16);
+    int min_x = 0;
+    int min_y = 0;
+    int record_x = start_x;
+    double MSD = -1;
     while(true){
         int local_sum = 0;
         auto temp = create_2d_vector<int>(16,16);
         for(int i = 0; i<16; i++){
             for(int j = 0; j < 16; j++){
-                local_sum+= pow(data.at(i).at(j) - previous.at(starting_y+i).at(starting_x+j),2);
-                temp.at(i).at(j) = data.at(i).at(j) - previous.at(starting_y+i).at(starting_x+j);
+                local_sum+= pow(data.at(i).at(j) - previous.at(start_y+i).at(start_x+j),2);
+                temp.at(i).at(j) = data.at(i).at(j) - previous.at(start_y+i).at(start_x+j);
             }
         }
         if(MSD == -1){
@@ -408,20 +459,20 @@ std::pair<std::vector<std::vector<int>>,std::pair<int,int>> MotionVector(int x_v
         }else{
             if(MSD > ((1/(pow(16,2)))*local_sum)){
                 MSD = (1/(pow(16,2)))*local_sum;
-                min_x = starting_x- x_val;
-                min_y = starting_y - y_val; 
+                min_x = start_x- x_val;
+                min_y = start_y - y_val; 
                 result = temp;
             }
         }
-        if(starting_x+16 >=80){
-            if(starting_y+16 >=80){
+        if(start_x+16 >=end_x){
+            if(start_y+16 >=end_y){
                 break;
             }else{
-                starting_x = 0;
-                starting_y += 16;
+                start_x = record_x;
+                start_y += 16;
             }
         }else{
-            starting_x += 16;
+            start_x += 16;
         }
     }
     return std::make_pair(result,std::make_pair((min_x), (min_y)));
@@ -512,8 +563,12 @@ std::vector<std::vector<int>> blocks(std::vector<std::vector<int>> data, std::ve
         std::vector<int> encoding = E_O(quantum);
         std::vector<int> encoding_p = E_O(quantum_p);
         std::vector<int> encoding_v = E_O(quantum_v);
-        std::pair<std::vector<int>, int> pair = P_or_IFrame(encoding_v, encoding_p, encoding);
-        rle(pair.first, stream, pair.second, x_y);
+        if(recorded_x == 0 &&recorded_y == 0){
+            rle(encoding, stream, 0, std::make_pair(0,0));
+        }else{
+            std::pair<std::vector<int>, int> pair = P_or_IFrame(encoding_v, encoding_p, encoding, x_y);
+            rle(pair.first, stream, pair.second, x_y);
+        }
         if(recorded_x+16 >=width){
             if(recorded_y+16 >=height){
                 break;

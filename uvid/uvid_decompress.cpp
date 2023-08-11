@@ -148,11 +148,11 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                     x_store.push_back(first_bin.at(count));
                     count--;
                 }
-                int next_byte = input.read_byte();
+                int next_few = input.read_byte();
                 std::vector<int> second_bin;
                 for(int i = 0; i<8; i++){
-                    second_bin.push_back(next_byte%2);
-                    next_byte = floor(next_byte/2);
+                    second_bin.push_back(next_few%2);
+                    next_few = floor(next_few/2);
                 }
                 x_store.push_back(second_bin.at(7));
                 count = 6;
@@ -164,13 +164,13 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                 int x_number = 0;
                 int y_number = 0;
                 int exp = 0;
-                for(int i = 7; i>= 0; i--){
+                for(int i = 6; i>= 0; i--){
                     x_number+= x_store.at(i)*pow(2,exp);
                     y_number+= y_store.at(i)*pow(2,exp);
                     exp++;
                 }
-                x_val = x_number-8;
-                y_val = y_number-8;
+                x_val = x_number-16;
+                y_val = y_number-16;
             }else{
                 int count = 5;
                 while(count >=0){
