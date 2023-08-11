@@ -285,7 +285,7 @@ std::pair<std::vector<int>,int> P_or_IFrame(std::vector<int> P, std::vector<int>
     }
 }
 /*
-For P-frame calcualtions 
+For P-frame calculations 
 */
 std::vector<std::vector<double>> inverse_DCT_low(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
     auto results = create_2d_vector<double>(16,16);
