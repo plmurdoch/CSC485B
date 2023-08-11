@@ -117,27 +117,6 @@ std::vector<std::vector<int>> Quantized(std::vector<std::vector<double>> data, s
     return results;
 }
 
-std::pair<std::vector<std::vector<int>>, int> Quantized_P(std::vector<std::vector<double>> data, std::vector<std::vector<int>> Q){
-    auto results = create_2d_vector<int>(16,16);
-    int invalid = 0;
-    for(int i = 0; i<16; i++){
-        for(int j = 0; j <16; j++){
-            int dat = round((data.at(i).at(j)/Q.at(i).at(j)));
-            if(dat < -127){
-                invalid = 1;
-                dat = 0;
-            }else if(dat > 127){
-                invalid = 1;
-                dat = 255;
-            }else{
-                dat = dat +127;
-            }
-            results.at(i).at(j) = dat;
-        }
-    }
-    return std::make_pair(results,invalid);
-}
-
 //Function for navigating through the matrices and outputs the results as the encoding order.
 std::vector<int> E_O(std::vector<std::vector<int>> data){
     std::vector<int> results;
@@ -305,11 +284,55 @@ std::pair<std::vector<int>,int> P_or_IFrame(std::vector<int> P, std::vector<int>
         return std::make_pair(result, 0);
     }
 }
+/*
+For P-frame calcualtions 
+*/
+std::vector<std::vector<double>> inverse_DCT_low(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
+    auto results = create_2d_vector<double>(16,16);
+    auto temp = create_2d_vector<double>(16,16);
+    for(int i = 0; i< 16; i++){
+        for(int j = 0; j<16; j++){
+            for(int x = 0; x<16; x++){
+                temp.at(i).at(j) += (data.at(x).at(j)*c.at(x).at(i));//for c transpose
+            }
+        }
+    }
+    for(int i = 0; i< 16; i++){
+        for(int j = 0; j<16; j++){
+            for(int x = 0; x<16; x++){
+                results.at(i).at(j) += (temp.at(i).at(x)*c.at(x).at(j)); 
+            }
+        }
+    }
+    return results;
+}
+
+std::vector<std::vector<double>> inverse_DCT_high(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
+    auto results = create_2d_vector<double>(16,16);
+    auto temp = create_2d_vector<double>(16,16);
+    for(int i = 0; i< 16; i++){
+        for(int j = 0; j<16; j++){
+            for(int x = 0; x<16; x++){
+                temp.at(i).at(j) += (data.at(i).at(x)*c.at(j).at(x));//for c transpose
+            }
+        }
+    }
+    for(int i = 0; i< 16; i++){
+        for(int j = 0; j<16; j++){
+            for(int x = 0; x<16; x++){
+                results.at(i).at(j) += (temp.at(i).at(x)*c.at(x).at(j)); 
+            }
+        }
+    }
+    return results;
+}
+
 //Main body of code, blocks takes the input and parses them into 8x8 blocks for the dct and quantization operations to occur.
 //In this function the block is placed into encoding order and then RLE is done before the block is streamed into the file.
-void blocks(std::vector<std::vector<int>> data, std::vector<std::vector<int>>previous, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream, std::vector<std::vector<int>> Q, std::string quality){
+std::vector<std::vector<int>> blocks(std::vector<std::vector<int>> data, std::vector<std::vector<int>>previous, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream, std::vector<std::vector<int>> Q, std::string quality){
     int recorded_x = 0;
     int recorded_y = 0;
+    auto encoded_data = create_2d_vector<int>(height, width); 
     while(true){
         auto temporary = create_2d_vector<int>(16,16);
         auto previous_temp = create_2d_vector<int>(16,16);
@@ -358,6 +381,27 @@ void blocks(std::vector<std::vector<int>> data, std::vector<std::vector<int>>pre
         }
         std::vector<std::vector<int>> quantum = Quantized(dct_block, Q);
         std::vector<std::vector<int>> quantum_p = Quantized(prev_dct_block, Q);
+        auto for_prev = create_2d_vector<int>(16,16);
+        for(int i = 0; i<16; i++){
+            for(int j = 0; j< 16; j++){
+                for_prev.at(i).at(j) = (quantum.at(i).at(j)-127)*Q.at(i).at(j);
+            }
+        }
+        auto inverse_dct = create_2d_vector<double>(16,16);
+        if(quality=="high"){
+            inverse_dct = inverse_DCT_high(for_prev, c);
+        }else{
+            inverse_dct = inverse_DCT_low(for_prev, c);
+        }
+        for(int i = 0; i<16; i++){
+            for(int j = 0; j< 16; j++){
+                if(recorded_y+i < height){
+                    if(recorded_x+j < width){
+                        encoded_data.at(recorded_y+i).at(recorded_x+j) = round(inverse_dct.at(i).at(j));
+                    }
+                }
+            }
+        }
         std::vector<int> encoding = E_O(quantum);
         std::vector<int> encoding_p = E_O(quantum_p);
         std::pair<std::vector<int>, int> pair = P_or_IFrame(encoding_p, encoding, stream);
@@ -373,6 +417,7 @@ void blocks(std::vector<std::vector<int>> data, std::vector<std::vector<int>>pre
             recorded_x += 16;
         }
     }
+    return encoded_data;
 }
 
 int main(int argc, char** argv){
@@ -449,20 +494,17 @@ int main(int argc, char** argv){
         for (u32 y = 0; y < height; y++)
             for (u32 x = 0; x < width; x++)
                 y_val.at(y).at(x) = frame.Y(x,y);
-        blocks(y_val, y_p, height, width, coeff, output_stream, Q, quality);
-        y_p = y_val;
+        y_p = blocks(y_val, y_p, height, width, coeff, output_stream, Q, quality);
         auto Cb = create_2d_vector<int>((height/2),(width/2));
         for (u32 y = 0; y < height/2; y++)
             for (u32 x = 0; x < width/2; x++)
                 Cb.at(y).at(x) = frame.Cb(x,y);
-        blocks(Cb, cb_p, ((height)/2), ((width)/2), coeff, output_stream, Q, quality);
-        cb_p = Cb;
+        cb_p =blocks(Cb, cb_p, ((height)/2), ((width)/2), coeff, output_stream, Q, quality);
         auto Cr = create_2d_vector<int>((height/2),(width/2));
         for (u32 y = 0; y < height/2; y++)
             for (u32 x = 0; x < width/2; x++)
                 Cr.at(y).at(x) = frame.Cr(x,y);
-        blocks(Cr, cr_p, ((height)/2), ((width)/2), coeff, output_stream, Q, quality);
-        cr_p = Cr;
+        cr_p = blocks(Cr, cr_p, ((height)/2), ((width)/2), coeff, output_stream, Q, quality);
     }
 
     output_stream.push_byte(0); //Flag to indicate end of data
