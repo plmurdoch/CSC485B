@@ -144,36 +144,26 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
             if(first_bit == 1){
                 int count = 5;
                 std::vector<int> x_store;
-                while(count >=0){
+                while(count >=3){
                     x_store.push_back(first_bin.at(count));
                     count--;
                 }
-                int next_few = input.read_byte();
-                std::vector<int> second_bin;
-                for(int i = 0; i<8; i++){
-                    second_bin.push_back(next_few%2);
-                    next_few = floor(next_few/2);
-                }
-                count = 7;
                 std::vector<int> y_store;
-                while(count>= 2){
-                    y_store.push_back(second_bin.at(count));
+                while(count>= 0){
+                    y_store.push_back(first_bin.at(count));
                     count--;
                 }
                 int x_number = 0;
                 int y_number = 0;
                 int exp = 0;
-                for(int i = 5; i>= 0; i--){
+                for(int i = 2; i>= 0; i--){
                     x_number+= x_store.at(i)*pow(2,exp);
                     y_number+= y_store.at(i)*pow(2,exp);
                     exp++;
                 }
-                x_val = x_number-16;
-                y_val = y_number-16;
-                while(count >= 0){
-                    num.push_back(second_bin.at(count));
-                    count--;
-                }
+                std::vector<int> order {-16,-8,0,8,16};
+                x_val = order.at(x_number);
+                y_val = order.at(y_number);
             }else{
                 int count = 5;
                 while(count >=0){

@@ -179,32 +179,40 @@ void Offload(std::vector<int> to_output, OutputBitStream stream){
     unsigned char output = final_num;
     stream.push_byte(output);
 }
-//RLE encoding using basic implementation outputing num:length pairs with each entry of the pair utilizing 8 bits.
-//Will be improved in Assignment 4, however, my other implementation for Variable length RLE was not working properly.
+//Variable RLE encoding.
 void rle(std::vector<int> data, OutputBitStream stream, int frame, std::pair<int,int> x_y){
     int size = data.size();
     std::vector<int> buffer;
     if(frame == 2){
         buffer.push_back(1);
         buffer.push_back(0);
-        int x = x_y.first + 16;
-        int y = x_y.second + 16;
+        int x = 0;
+        int y = 0;
+        std::vector<int> order {-16,-8,0,8,16};
+        for(int i = 0; i <5; i++){
+            if(x_y.first == order.at(i)){
+                x = i;
+            }
+            if(x_y.second == order.at(i)){
+                y = i;
+            }
+        }
         std::vector<int> temp_x;
         std::vector<int> temp_y;
-        for(int j = 0; j<7; j++){
+        for(int j = 0; j<3; j++){
             temp_x.push_back((x%2));
             temp_y.push_back((y%2));
             x = floor(x/2);
             y=floor(y/2);
         }
-        for(int j =5; j>=0; j--){
+        for(int j =2; j>=0; j--){
             buffer.push_back(temp_x.at(j));
             if(buffer.size() == 8){
                 Offload(buffer, stream);
                 buffer.clear();
             }
         }
-        for(int j =5; j>=0; j--){
+        for(int j =2; j>=0; j--){
             buffer.push_back(temp_y.at(j));
             if(buffer.size() == 8){
                 Offload(buffer, stream);
