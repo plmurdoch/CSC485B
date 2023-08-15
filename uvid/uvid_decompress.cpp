@@ -299,6 +299,7 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                 exponent++;
             }
             encoded.push_back((unsigned char)encode);
+            resulting_number = encode;
         }else if(!rle_buff.empty()){
             count = rle_buff.size()-1;
             for(int i = count; i>= 0; i--){
