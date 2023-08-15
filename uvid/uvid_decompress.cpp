@@ -119,7 +119,8 @@ std::vector<std::vector<double>> inverse_DCT_high(std::vector<std::vector<int>> 
 //Main body for the code read_input reads the input until the associated matrix of size height and width is filled completely.
 //Number:length pair bytes are read and then stored in the encoded vector, once the encoded vector has enough entries for an 8x8 matrix they are offloaded into a DCT matrix.
 //DCT matrix is then inverted using our coefficient in the order based on the quality. Data is then rounded and bounded to the range 0-255 for image reconstruction.
-std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::vector<std::vector<unsigned char>> previous, std::vector<std::vector<int>> Q, std::vector<std::vector<double>> C, int height, int width, int quality){
+std::pair<std::vector<std::vector<unsigned char>>,std::vector<int>> read_input(InputBitStream input, std::vector<std::vector<unsigned char>> previous, std::vector<std::vector<int>> Q, std::vector<std::vector<double>> C, int height, int width, int quality, std::vector<int> over){
+    std::vector<int> overflow;
     auto result = create_2d_vector<unsigned char>(height, width);
     int counter = 0;
     std::vector<unsigned char> encoded;
@@ -130,6 +131,9 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
     int x_val = -1;
     int y_val = -1;
     std::vector<int> bit_buffer;
+    if(over.size() != 0 ){
+        bit_buffer = over;
+    }
     std::vector<int>rle_buff;
     while(true){
         int recorded = 0;
@@ -201,6 +205,9 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                     while(count >= 0){
                         num.push_back(bits.at(count));
                         count--;
+                        if(num.size() == 8){
+                            break;
+                        }
                     }
                 }
                 while(count >= 0){
@@ -229,6 +236,9 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                     while(count >= 0){
                         num.push_back(first_bin.at(count));
                         count--;
+                        if(num.size() == 8){
+                            break;
+                        }
                     }
                 }
                 while(count >= 0){
@@ -447,7 +457,13 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                             }
                             result.at(y+recorded_y).at(x+recorded_x) = dat;
                             if (counter == ((height*width)-1)){
-                                return result;
+                                if(bit_buffer.size() >= 8){
+                                    while(bit_buffer.size() > 8){
+                                        bit_buffer.erase(bit_buffer.begin());
+                                    }
+                                    overflow = bit_buffer;
+                                }
+                                return std::make_pair(result,overflow);
                             }else{
                                 counter++;
                             }
@@ -527,15 +543,21 @@ int main(int argc, char** argv){
         auto Y = create_2d_vector<unsigned char>(height,width);
         auto Cb = create_2d_vector<unsigned char>((height)/2,(width)/2);
         auto Cr = create_2d_vector<unsigned char>((height)/2,(width)/2);
+        std::vector<int> over;
         //Build Y matrix.
-        Y = read_input(input_stream,y_p, Q, coeff,height, width, quality);
-        y_p = Y;
+        std::pair<std::vector<std::vector<unsigned char>>,std::vector<int>> result = read_input(input_stream,y_p, Q, coeff,height, width, quality, over);
+        Y = result.first;
+        y_p = result.first;
+        over = result.second;
         //Build Cb matrix.
-        Cb = read_input(input_stream,cb_p, Q, coeff,((height)/2),((width)/2), quality);
-        cb_p = Cb;
+        result = read_input(input_stream,cb_p, Q, coeff,((height)/2),((width)/2), quality, over);
+        cb_p = result.first;
+        Cb = result.first;
+        over = result.second;
         //Build Cr matrix.
-        Cr = read_input(input_stream, cr_p, Q, coeff,((height)/2),((width)/2), quality);
-        cr_p = Cr;
+        result = read_input(input_stream, cr_p, Q, coeff,((height)/2),((width)/2), quality, over);
+        Cr = result.first;
+        cr_p = result.first;
         YUVFrame420& frame = writer.frame();
         for (u32 y = 0; y < height; y++)
             for (u32 x = 0; x < width; x++)
