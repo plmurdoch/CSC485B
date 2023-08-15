@@ -130,7 +130,10 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
     int x_val = -1;
     int y_val = -1;
     std::vector<int> bit_buffer;
+    std::vector<int>rle_buff;
     while(true){
+        int recorded = 0;
+        int resulting_number = 0;
         std::vector<int> num;
         if(first_bit == -1){
             int to_parse = input.read_byte();
@@ -164,43 +167,143 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                 std::vector<int> order {-16,-8,0,8,16};
                 x_val = order.at(x_number);
                 y_val = order.at(y_number);
+                int value = input.read_byte();
+                std::vector<int> bits;
+                for(int i = 0; i<8; i++){
+                    bits.push_back(value%2);
+                    value = floor(value/2);
+                }
+                count = 7;
+                if(bits.at(7) == 0){
+                    encoded.push_back((unsigned char)127);
+                    recorded = 1;
+                    resulting_number = 127;
+                    count = count -1;
+                }else if(bits.at(6) == 0){
+                    encoded.push_back((unsigned char)128);
+                    resulting_number = 128;
+                    recorded = 1;
+                    count = count -2;
+                }else if(bits.at(5) == 0){
+                    encoded.push_back((unsigned char)126);
+                    resulting_number = 126;
+                    recorded = 1;
+                    count = count -3;
+                }else{
+                    count = count-3;
+                    while(count >= 0){
+                        num.push_back(bits.at(count));
+                        count--;
+                    }
+                }
+                while(count >= 0){
+                    rle_buff.push_back(bits.at(count));
+                    count--;
+                }
             }else{
                 int count = 5;
-                while(count >=0){
-                    num.push_back(first_bin.at(count));
+                if(first_bin.at(5) == 0){
+                    encoded.push_back((unsigned char)127);
+                    recorded = 1;
+                    resulting_number = 127;
+                    count = count -1;
+                }else if(first_bin.at(4) == 0){
+                    encoded.push_back((unsigned char)128);
+                    resulting_number = 128;
+                    recorded = 1;
+                    count = count -2;
+                }else if(first_bin.at(3) == 0){
+                    encoded.push_back((unsigned char)126);
+                    resulting_number = 126;
+                    recorded = 1;
+                    count = count -3;
+                }else{
+                    count = count-3;
+                    while(count >= 0){
+                        num.push_back(first_bin.at(count));
+                        count--;
+                    }
+                }
+                while(count >= 0){
+                    rle_buff.push_back(first_bin.at(count));
                     count--;
                 }
             }
         }else{
-            if(!bit_buffer.empty()){
-                int size = bit_buffer.size();
-                for(int i = 0; i<size; i++){
+            if(bit_buffer.size() <=3){
+                std::vector<int> overflow;
+                int next_bits = input.read_byte();
+                for(int i = 0; i< 8; i++){
+                    overflow.push_back(next_bits%2);
+                    next_bits = floor(next_bits/2);
+                }
+                int counter = 7;
+                for(int i = 0; i<8; i++){
+                    bit_buffer.push_back(overflow.at(counter));
+                    counter--;
+                }
+            }
+            int size = bit_buffer.size();
+            if(bit_buffer.at(0) == 0){
+                encoded.push_back((unsigned char)127);
+                recorded = 1;
+                resulting_number = 127;
+                for(int i = 1; i <size; i++){
+                    rle_buff.push_back(bit_buffer.at(i));
+                }
+            }else if(bit_buffer.at(1) == 0){
+                encoded.push_back((unsigned char)128);
+                resulting_number = 128;
+                recorded = 1;
+                for(int i = 2; i <size; i++){
+                    rle_buff.push_back(bit_buffer.at(i));
+                }
+            }else if(bit_buffer.at(2) == 0){
+                encoded.push_back((unsigned char)126);
+                resulting_number = 126;
+                recorded = 1;
+                for(int i = 3; i <size; i++){
+                    rle_buff.push_back(bit_buffer.at(i));
+                }
+            }else{
+                for(int i = 3; i< size; i++){
                     num.push_back(bit_buffer.at(i));
                 }
-                bit_buffer.clear();
             }
+            bit_buffer.clear();   
         }
         std::vector<int> next;
-        int next_byte = input.read_byte();
-        for(int i = 0; i<8; i++){
-            next.push_back(next_byte%2);
-            next_byte = floor(next_byte/2);
+        int count = 0;
+        if(recorded == 0){
+            int next_byte = input.read_byte();
+            for(int i = 0; i<8; i++){
+                next.push_back(next_byte%2);
+                next_byte = floor(next_byte/2);
+            }
+            count = 7;
+            while(num.size()<8){
+                num.push_back(next.at(count));
+                count--;
+            }
+            int encode = 0;
+            int exponent = 0;
+            for(int i = 7; i>= 0; i--){
+                encode += num.at(i)*pow(2,exponent);
+                exponent++;
+            }
+            encoded.push_back((unsigned char)encode);
+            std::cerr<<encode<<" : ";
+        }else if(!rle_buff.empty()){
+            std::cerr<<resulting_number<<" : ";
+            count = rle_buff.size()-1;
+            for(int i = count; i>= 0; i--){
+                next.push_back(rle_buff.at(i));
+            }
+            rle_buff.clear();
         }
-        int count = 7;
-        while(num.size() <8){
-            num.push_back(next.at(count));
-            count--;
-        }
-        int number = 0;
-        int exp = 0;
-        for(int i = 7; i>= 0; i--){
-            number+= num.at(i)*pow(2,exp);
-            exp++;
-        }
-        encoded.push_back((unsigned char)number);
         int length_code = 0;
         if(count < 0){
-            next_byte = input.read_byte();
+            int next_byte = input.read_byte();
             next.clear();
             for(int i = 0; i<8; i++){
                 next.push_back(next_byte%2);
@@ -212,7 +315,7 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
             length_code++;
             count--;
             if(count < 0){
-                next_byte = input.read_byte();
+                int next_byte = input.read_byte();
                 next.clear();
                 for(int i = 0; i<8; i++){
                     next.push_back(next_byte%2);
@@ -224,12 +327,14 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
         count--;
         if(length_code == 0){
             while(count >= 0){
+                std::cerr<<0<<std::endl;
                 bit_buffer.push_back(next.at(count));
                 count--;
             }
         }else{
             if (length_code == 1){
-                encoded.push_back((unsigned char)number);
+                std::cerr<<1<<std::endl;
+                encoded.push_back((unsigned char)resulting_number);
                 while(count >= 0){
                     bit_buffer.push_back(next.at(count));
                     count--;
@@ -249,8 +354,9 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                         len += length_bin.at(i)*pow(2,exponent);
                         exponent++;
                     }
+                    std::cerr<<len<<std::endl;
                     for(int i = 0; i<len; i++){
-                        encoded.push_back((unsigned char)number);
+                        encoded.push_back((unsigned char)resulting_number);
                     }
                     while(count >= 0){
                         bit_buffer.push_back(next.at(count));
@@ -264,7 +370,7 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                         count--;
                         length_code--;
                     }
-                    next_byte = input.read_byte();
+                    int next_byte = input.read_byte();
                     next.clear();
                     for(int i = 0; i<8; i++){
                         next.push_back(next_byte%2);
@@ -282,8 +388,9 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                         len += length_bin.at(i)*pow(2,exponent);
                         exponent++;
                     }
+                    std::cerr<<len<<std::endl;
                     for(int i = 0; i<len; i++){
-                        encoded.push_back((unsigned char)number);
+                        encoded.push_back((unsigned char)resulting_number);
                     }
                     while(count >= 0){
                         bit_buffer.push_back(next.at(count));
@@ -293,6 +400,7 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
             }
         }
         int encoded_size = encoded.size();
+        std::cerr<<encoded_size<<std::endl;
         if(encoded_size == 256){
             auto DCT = create_2d_vector<int>(16,16);
             int E_O_size = E_O.size();
@@ -304,6 +412,7 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
             }
             encoded.clear();
             bit_buffer.clear();
+            rle_buff.clear();
             auto data = create_2d_vector<double>(16,16);
             if(quality != 2){
                 data = inverse_DCT_low(DCT, C);

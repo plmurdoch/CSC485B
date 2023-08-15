@@ -182,6 +182,7 @@ void Offload(std::vector<int> to_output, OutputBitStream stream){
 //Variable RLE encoding.
 void rle(std::vector<int> data, OutputBitStream stream, int frame, std::pair<int,int> x_y){
     int size = data.size();
+    std::vector<int> shortened = {127,128, 126};
     std::vector<int> buffer;
     if(frame == 2){
         buffer.push_back(1);
@@ -228,16 +229,69 @@ void rle(std::vector<int> data, OutputBitStream stream, int frame, std::pair<int
     }
     for(int i = 0; i<size; i++){
         int output = data.at(i);
-        std::vector<int> temp;
-        for(int j = 0; j<8; j++){
-            temp.push_back((output%2));
-            output = floor(output/2);
+        std::cerr<<output<<" : ";
+        int shorten = -1;
+        for(int j = 0; j<3; j++){
+            if(shortened.at(j) == output){
+                shorten = j;
+                break;
+            }
         }
-        for(int j =7; j>=0; j--){
-            buffer.push_back(temp.at(j));
-            if(buffer.size() == 8){
-                Offload(buffer, stream);
-                buffer.clear();
+        if(shorten != -1){
+            if(shorten == 0){
+                buffer.push_back(0);
+                if(buffer.size() == 8){
+                    Offload(buffer, stream);
+                    buffer.clear();
+                }
+            }else if(shorten == 1){
+                int temp = 2; 
+                std::vector<int> temp_v;
+                for(int i = 0; i<2; i++){
+                    temp_v.push_back(temp%2);
+                    temp = floor(temp/2);
+                }
+                for(int i = 1; i>=0; i--){
+                    buffer.push_back(temp_v.at(i));
+                    if(buffer.size() == 8){
+                        Offload(buffer, stream);
+                        buffer.clear();
+                    }
+                }
+            }else{
+                int temp = 6; 
+                std::vector<int> temp_v;
+                for(int i = 0; i<3; i++){
+                    temp_v.push_back(temp%2);
+                    temp = floor(temp/2);
+                }
+                for(int i = 2; i>=0; i--){
+                    buffer.push_back(temp_v.at(i));
+                    if(buffer.size() == 8){
+                        Offload(buffer, stream);
+                        buffer.clear();
+                    }
+                }
+            }
+        }else{
+            for(int k = 0; k <3; k++){
+                buffer.push_back(1);
+                if(buffer.size() == 8){
+                    Offload(buffer, stream);
+                    buffer.clear();
+                }
+            }
+            std::vector<int> temp;
+            for(int j = 0; j<8; j++){
+                temp.push_back((output%2));
+                output = floor(output/2);
+            }
+            for(int j =7; j>=0; j--){
+                buffer.push_back(temp.at(j));
+                if(buffer.size() == 8){
+                    Offload(buffer, stream);
+                    buffer.clear();
+                }
             }
         }
         int j = i+1;
@@ -250,6 +304,7 @@ void rle(std::vector<int> data, OutputBitStream stream, int frame, std::pair<int
                 break;
             }
         }
+        std::cerr<<count<<std::endl;
         if(count == 0){
             buffer.push_back(0);
             if(buffer.size() == 8){
