@@ -229,7 +229,6 @@ void rle(std::vector<int> data, OutputBitStream stream, int frame, std::pair<int
     }
     for(int i = 0; i<size; i++){
         int output = data.at(i);
-        std::cerr<<output<<" : ";
         int shorten = -1;
         for(int j = 0; j<3; j++){
             if(shortened.at(j) == output){
@@ -304,7 +303,6 @@ void rle(std::vector<int> data, OutputBitStream stream, int frame, std::pair<int
                 break;
             }
         }
-        std::cerr<<count<<std::endl;
         if(count == 0){
             buffer.push_back(0);
             if(buffer.size() == 8){

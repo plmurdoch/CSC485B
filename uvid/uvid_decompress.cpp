@@ -136,11 +136,18 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
         int resulting_number = 0;
         std::vector<int> num;
         if(first_bit == -1){
-            int to_parse = input.read_byte();
             std::vector<int> first_bin;
-            for(int i = 0; i<8; i++){
-                first_bin.push_back(to_parse%2);
-                to_parse = floor(to_parse/2);
+            if(!bit_buffer.empty()){
+                for(int i = 7; i>= 0; i--){
+                    first_bin.push_back(bit_buffer.at(i));
+                }
+                bit_buffer.clear();
+            }else{
+                int to_parse = input.read_byte();
+                for(int i = 0; i<8; i++){
+                    first_bin.push_back(to_parse%2);
+                    to_parse = floor(to_parse/2);
+                }
             }
             first_bit = first_bin.at(7);
             second_bit = first_bin.at(6);
@@ -230,7 +237,7 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                 }
             }
         }else{
-            if(bit_buffer.size() <=3){
+            if(bit_buffer.size() <= 3){
                 std::vector<int> overflow;
                 int next_bits = input.read_byte();
                 for(int i = 0; i< 8; i++){
@@ -292,9 +299,7 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                 exponent++;
             }
             encoded.push_back((unsigned char)encode);
-            std::cerr<<encode<<" : ";
         }else if(!rle_buff.empty()){
-            std::cerr<<resulting_number<<" : ";
             count = rle_buff.size()-1;
             for(int i = count; i>= 0; i--){
                 next.push_back(rle_buff.at(i));
@@ -327,13 +332,11 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
         count--;
         if(length_code == 0){
             while(count >= 0){
-                std::cerr<<0<<std::endl;
                 bit_buffer.push_back(next.at(count));
                 count--;
             }
         }else{
             if (length_code == 1){
-                std::cerr<<1<<std::endl;
                 encoded.push_back((unsigned char)resulting_number);
                 while(count >= 0){
                     bit_buffer.push_back(next.at(count));
@@ -354,7 +357,6 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                         len += length_bin.at(i)*pow(2,exponent);
                         exponent++;
                     }
-                    std::cerr<<len<<std::endl;
                     for(int i = 0; i<len; i++){
                         encoded.push_back((unsigned char)resulting_number);
                     }
@@ -388,7 +390,6 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                         len += length_bin.at(i)*pow(2,exponent);
                         exponent++;
                     }
-                    std::cerr<<len<<std::endl;
                     for(int i = 0; i<len; i++){
                         encoded.push_back((unsigned char)resulting_number);
                     }
@@ -400,7 +401,6 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
             }
         }
         int encoded_size = encoded.size();
-        std::cerr<<encoded_size<<std::endl;
         if(encoded_size == 256){
             auto DCT = create_2d_vector<int>(16,16);
             int E_O_size = E_O.size();
@@ -411,7 +411,13 @@ std::vector<std::vector<unsigned char>> read_input(InputBitStream input, std::ve
                 DCT.at(row).at(column) = ((for_DCT-127)*Q.at(row).at(column));
             }
             encoded.clear();
-            bit_buffer.clear();
+            if(bit_buffer.size() < 8){
+                bit_buffer.clear();
+            }else{
+                while(bit_buffer.size() > 8){
+                    bit_buffer.erase(bit_buffer.begin());
+                }
+            }
             rle_buff.clear();
             auto data = create_2d_vector<double>(16,16);
             if(quality != 2){
