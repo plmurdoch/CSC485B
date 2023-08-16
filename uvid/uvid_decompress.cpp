@@ -117,8 +117,11 @@ std::vector<std::vector<double>> inverse_DCT_high(std::vector<std::vector<int>> 
 }
 
 //Main body for the code read_input reads the input until the associated matrix of size height and width is filled completely.
-//Number:length pair bytes are read and then stored in the encoded vector, once the encoded vector has enough entries for an 8x8 matrix they are offloaded into a DCT matrix.
-//DCT matrix is then inverted using our coefficient in the order based on the quality. Data is then rounded and bounded to the range 0-255 for image reconstruction.
+//For each block, the byte is offloaded into a buffer and then the buffers are parsed in order to determine the specific file information.
+//First 2 bits are the block type. if block type is a motion vector then the next 6 bits will be the motion vector coordinates.
+//Then Number bits:Unary V-RLE length pairs are read and then stored in the encoded vector, once the encoded vector has enough entries for a 16x16 matrix they are offloaded into a DCT matrix.
+//DCT matrix is then inverted using our coefficient in the order based on the quality. The corresponding temporal method is applied and the data is rounded and bounded to the range 0-255 for image reconstruction.
+//Overflowing data is computed in the returned overflow vector so that no data is lost moving in and out of the read_input function.
 std::pair<std::vector<std::vector<unsigned char>>,std::vector<int>> read_input(InputBitStream input, std::vector<std::vector<unsigned char>> previous, std::vector<std::vector<int>> Q, std::vector<std::vector<double>> C, int height, int width, int quality, std::vector<int> over){
     std::vector<int> overflow;
     auto result = create_2d_vector<unsigned char>(height, width);
@@ -522,7 +525,7 @@ int main(int argc, char** argv){
     }else if(quality == 2){
         for(int i = 0; i< 16; i++){
             for(int j = 0; j<16; j++){
-                Q.at(i).at(j) = (round((0.2*Q.at(i).at(j)))); 
+                Q.at(i).at(j) = (round(0.2*(Q.at(i).at(j)))); 
             }
         }
     }else{

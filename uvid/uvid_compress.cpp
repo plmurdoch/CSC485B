@@ -14,6 +14,8 @@
    video stream, those values must be provided to the program as arguments.
 
    B. Bird - 2023-07-08
+
+   Code written by: Payton Larsen Murdoch, V00904677
 */
 
 #include <iostream>
@@ -28,6 +30,7 @@
 #include "yuv_stream.hpp"
 
 //Convenience function to wrap around the nasty notation for 2d vectors
+//This template function was taken from Assignment 3 starter code for CSC 485B, composed by Bill Bird.
 template<typename T>
 std::vector<std::vector<T> > create_2d_vector(unsigned int outer, unsigned int inner){
     std::vector<std::vector<T> > V {outer, std::vector<T>(inner,T() )};
@@ -98,23 +101,26 @@ std::vector<std::vector<double>> DCT_high(std::vector<std::vector<int>> data, st
     return results;
 }
 
-//Quantized values are rounded and clamped within the (-127,127) range so that they can be output as bytes in 0-255 range.
-std::vector<std::vector<int>> Quantized(std::vector<std::vector<double>> data, std::vector<std::vector<int>> Q){
+//Quantized values are rounded and attemped to be clamped within the (-127,127) range so that they can be output as bytes in 0-255 range.
+std::pair<std::vector<std::vector<int>>,int> Quantized(std::vector<std::vector<double>> data, std::vector<std::vector<int>> Q){
     auto results = create_2d_vector<int>(16,16);
+    int oob = 0;
     for(int i = 0; i<16; i++){
         for(int j = 0; j <16; j++){
             int dat = round((data.at(i).at(j)/Q.at(i).at(j)));
             if(dat < -127){
                 dat = 0;
+                oob = 1;
             }else if(dat > 127){
                 dat = 255;
+                oob = 1;
             }else{
                 dat = dat +127;
             }
             results.at(i).at(j) = dat;
         }
     }
-    return results;
+    return std::make_pair(results, oob);
 }
 
 //Function for navigating through the matrices and outputs the results as the encoding order.
@@ -169,6 +175,7 @@ std::vector<int> E_O(std::vector<std::vector<int>> data){
     return results;
 }
 
+//Bits are loaded into an output buffer in sequential order then offloaded as a byte value in this function.
 void Offload(std::vector<int> to_output, OutputBitStream stream){
     int final_num = 0; 
     int count = 0;
@@ -179,7 +186,13 @@ void Offload(std::vector<int> to_output, OutputBitStream stream){
     unsigned char output = final_num;
     stream.push_byte(output);
 }
-//Variable RLE encoding.
+
+//This function named RLE first sends the block type as overhead, either it is computed as an I-frame, code 00, P-frame, code 01 or P-frame motion vector, code 10.
+//I and P frames have no more heading, however, the next 6 bits of the motion vector block contains the motion vector codes for x and y.
+//000 is -16, 001 is -8, 010 is 0, 011 is 8, 100 is 16. 
+//Then the funciton packetizes the encoding ordered data into either 3 shortened codes if -1, 0 or 1 (or 126,127,128) as 0, 10, 110,
+//or they are stored as the standard bytes with a 111 prefix and thus expanded. This reduces the file size drastically on medium and low settings.
+//The function then uses Unary Variable RLE encodings following the codes, as encoding blocks contain 256 values this can show significant improvement.
 void rle(std::vector<int> data, OutputBitStream stream, int frame, std::pair<int,int> x_y){
     int size = data.size();
     std::vector<int> shortened = {127,128, 126};
@@ -347,7 +360,10 @@ void rle(std::vector<int> data, OutputBitStream stream, int frame, std::pair<int
     }
 }
 
-std::pair<std::vector<int>,int> P_or_IFrame(std::vector<int> V,std::vector<int> P, std::vector<int> I, std::pair<int,int> x_y){
+//P_or_IFrame function examines blocks of P frames, I frames or a P frame using a motion vector and determines what would have the longest runs in the given setting.
+//The block with the longest runs will take advantage of RLE reduction the most. If there are multiple blocks with the same run lengths, prioritize I-frames. 
+//There is also an out of bounds restriction on P frames and motion vectors as they would yield data that skews the frame too much.
+std::pair<std::vector<int>,int> P_or_IFrame(std::vector<int> V,std::vector<int> P, std::vector<int> I, std::pair<int,int> x_y, std::pair<int,int>oob_p_v){
     std::vector<int> result;
     int count_p = 0;
     int count_i = 0;
@@ -379,10 +395,10 @@ std::pair<std::vector<int>,int> P_or_IFrame(std::vector<int> V,std::vector<int> 
                 }
             }
         }
-        if(count_p >count_i && count_p >count_v){
+        if(count_p >count_i && count_p >count_v && oob_p_v.first == 0){
             result = P;
             return std::make_pair(result,1);
-        }else if(count_v >count_i && count_v >count_p){
+        }else if(count_v >count_i && count_v >count_p && oob_p_v.second == 0){
             result = V;
             return std::make_pair(result, 2);
         }else{
@@ -407,7 +423,7 @@ std::pair<std::vector<int>,int> P_or_IFrame(std::vector<int> V,std::vector<int> 
                 }
             }
         }
-        if(count_p >count_i){
+        if(count_p >count_i && oob_p_v.first == 0){
             result = P;
             return std::make_pair(result,1);
         }else{
@@ -417,9 +433,7 @@ std::pair<std::vector<int>,int> P_or_IFrame(std::vector<int> V,std::vector<int> 
     }
     
 }
-/*
-For P-frame calculations 
-*/
+//To minimize culminating errors we utilized decompressed frame values for next P-frame calculations, therefore we have inverse DCT functions here 
 std::vector<std::vector<double>> inverse_DCT_low(std::vector<std::vector<int>> data, std::vector<std::vector<double>> c){
     auto results = create_2d_vector<double>(16,16);
     auto temp = create_2d_vector<double>(16,16);
@@ -460,6 +474,8 @@ std::vector<std::vector<double>> inverse_DCT_high(std::vector<std::vector<int>> 
     return results;
 }
 
+//Function for determining Motion Vectors. A local search occurs surrounding the current block in the P-frame and this remains within the bounds of the frame.
+//Motion Vectors can range from x and y values of -16, -8, 0, +8, +16. We utilize MSD so find the vectors which have the best result.
 std::pair<std::vector<std::vector<int>>,std::pair<int,int>> MotionVector(int x_val, int y_val, int height, int width, std::vector<std::vector<int>> previous, std::vector<std::vector<int>> data){
     int count = 0;
     int start_x = x_val; 
@@ -538,8 +554,10 @@ std::pair<std::vector<std::vector<int>>,std::pair<int,int>> MotionVector(int x_v
     }
     return std::make_pair(result,std::make_pair((min_x), (min_y)));
 }
-//Main body of code, blocks takes the input and parses them into 8x8 blocks for the dct and quantization operations to occur.
-//In this function the block is placed into encoding order and then RLE is done before the block is streamed into the file.
+
+//Main body of code, blocks takes the input and parses them into 3- 16x16 blocks, one I-frame, one P-frame, one P-frame motion vector.
+//Dct and quantization is performed then we send all 3 blocks to be examined in order to determine the proper block to use to maximize encoding.
+//In this function the block is then placed into encoding order and then encoding is done before the block is streamed into the file.
 std::vector<std::vector<int>> blocks(std::vector<std::vector<int>> data, std::vector<std::vector<int>>previous, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream, std::vector<std::vector<int>> Q, std::string quality){
     int recorded_x = 0;
     int recorded_y = 0;
@@ -595,15 +613,15 @@ std::vector<std::vector<int>> blocks(std::vector<std::vector<int>> data, std::ve
         }else{
             dct_block = DCT_low(temporary, c);
             prev_dct_block = DCT_low(previous_temp,c);
-            motion_dct_block = DCT_high(motion_frames, c);
+            motion_dct_block = DCT_low(motion_frames, c);
         }
-        std::vector<std::vector<int>> quantum = Quantized(dct_block, Q);
-        std::vector<std::vector<int>> quantum_p = Quantized(prev_dct_block, Q);
-        std::vector<std::vector<int>> quantum_v = Quantized(motion_dct_block, Q);
+        std::pair<std::vector<std::vector<int>>,int> quantum = Quantized(dct_block, Q);
+        std::pair<std::vector<std::vector<int>>,int> quantum_p = Quantized(prev_dct_block, Q);
+        std::pair<std::vector<std::vector<int>>,int> quantum_v = Quantized(motion_dct_block, Q);
         auto for_prev = create_2d_vector<int>(16,16);
         for(int i = 0; i<16; i++){
             for(int j = 0; j< 16; j++){
-                for_prev.at(i).at(j) = (quantum.at(i).at(j)-127)*Q.at(i).at(j);
+                for_prev.at(i).at(j) = (quantum.first.at(i).at(j)-127)*Q.at(i).at(j);
             }
         }
         auto inverse_dct = create_2d_vector<double>(16,16);
@@ -621,13 +639,13 @@ std::vector<std::vector<int>> blocks(std::vector<std::vector<int>> data, std::ve
                 }
             }
         }
-        std::vector<int> encoding = E_O(quantum);
-        std::vector<int> encoding_p = E_O(quantum_p);
-        std::vector<int> encoding_v = E_O(quantum_v);
+        std::vector<int> encoding = E_O(quantum.first);
+        std::vector<int> encoding_p = E_O(quantum_p.first);
+        std::vector<int> encoding_v = E_O(quantum_v.first);
         if(recorded_x == 0 &&recorded_y == 0){
             rle(encoding, stream, 0, std::make_pair(0,0));
         }else{
-            std::pair<std::vector<int>, int> pair = P_or_IFrame(encoding_v, encoding_p, encoding, x_y);
+            std::pair<std::vector<int>, int> pair = P_or_IFrame(encoding_v, encoding_p, encoding, x_y, std::make_pair(quantum_p.second,quantum_v.second));
             rle(pair.first, stream, pair.second, x_y);
         }
         if(recorded_x+16 >=width){
@@ -663,6 +681,7 @@ int main(int argc, char** argv){
     //I utilized the resouce below to better understand standard quantum matrices.
     //I then create one that worked well with my DCT to limit the number of values which exceed the range of -127 and 127. 
     //https://cs.stanford.edu/people/eroberts/courses/soco/projects/data-compression/lossy/jpeg/coeff.htm 
+    //This has been expanded to a 16 x 16 Quantization matrix building on the 8 x 8 matrix using trial and error.
     std::vector<std::vector<int>> Q = {
         { 40,  51,  61,  66,  70,  61,  64,  73,  79,  82,  87,  89,  95,  98, 103, 104 },
         { 50,  64,  77,  83,  82,  64,  68,  81,  84,  87,  89,  93,  97, 100, 103, 104 },
@@ -708,6 +727,7 @@ int main(int argc, char** argv){
 
     output_stream.push_u32(height);
     output_stream.push_u32(width);
+    //x_p stands for the previous version of the following YUV planes in order to apply P frames or motion vectors. 
     auto y_p = create_2d_vector<int>(height, width);
     auto cb_p = create_2d_vector<int>((height/2),(width/2));
     auto cr_p = create_2d_vector<int>((height/2),(width/2));
