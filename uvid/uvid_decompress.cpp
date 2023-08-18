@@ -500,7 +500,6 @@ int main(int argc, char** argv){
     //I then utilized trial and error to find matrices that worked well with my DCT to limit the number of values which exceed the range of -127 and 127. 
     //https://cs.stanford.edu/people/eroberts/courses/soco/projects/data-compression/lossy/jpeg/coeff.htm 
     auto Q = create_2d_vector<int>(16,16);
-    auto Q_c = create_2d_vector<int>(16,16);
     //the next if statements allow us to change the quality setting of our Quantum based on the user input.
     if(quality == 0){
         Q = {
@@ -565,11 +564,6 @@ int main(int argc, char** argv){
             { 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160, 165, 170, 175 },
             { 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160, 165, 170, 175, 180 }
         };
-        for(int i = 0; i< 16; i++){
-            for(int j = 0; j<16; j++){
-                Q.at(i).at(j) = round(0.8*(Q.at(i).at(j))); 
-            }
-        }
     }
     std::vector<std::vector<double>> coeff = Coeff();
     u32 height {input_stream.read_u32()};
