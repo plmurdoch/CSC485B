@@ -558,95 +558,166 @@ std::pair<std::vector<std::vector<int>>,std::pair<int,int>> MotionVector(int x_v
 //Main body of code, blocks takes the input and parses them into 3- 16x16 blocks, one I-frame, one P-frame, one P-frame motion vector.
 //Dct and quantization is performed then we send all 3 blocks to be examined in order to determine the proper block to use to maximize encoding.
 //In this function the block is then placed into encoding order and then encoding is done before the block is streamed into the file.
-std::vector<std::vector<int>> blocks(std::vector<std::vector<int>> data, std::vector<std::vector<int>>previous, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream, std::vector<std::vector<int>> Q, std::string quality){
+std::vector<std::vector<int>> blocks(std::vector<std::vector<int>> data, std::vector<std::vector<int>>previous, int height, int width, std::vector<std::vector<double>> c, OutputBitStream stream, std::vector<std::vector<int>> Q, std::string quality, int first){
     int recorded_x = 0;
     int recorded_y = 0;
     auto encoded_data = create_2d_vector<int>(height, width); 
     while(true){
-        auto temporary = create_2d_vector<int>(16,16);
-        auto previous_temp = create_2d_vector<int>(16,16);
-        std::vector<int> prev_row;
-        std::vector<int> previous_p_row;
-        int prev = -1;
-        int previous_p = -1;
-        for(int i = 0; i<16; i++){
-            for(int j = 0; j < 16; j++){
-                if(recorded_y+i < height){
-                    if(recorded_x+j < width){
-                        temporary.at(i).at(j) = data.at(recorded_y+i).at(recorded_x+j);
-                        previous_temp.at(i).at(j) = data.at(recorded_y+i).at(recorded_x+j)-previous.at(recorded_y+i).at(recorded_x+j);
-                        prev = temporary.at(i).at(j);
-                        previous_p = previous_temp.at(i).at(j);
-                        if(prev_row.size() == 16){
-                            prev_row.clear();
-                            previous_p_row.clear();
+        if(first == 0){
+            auto temporary = create_2d_vector<int>(16,16);
+            auto previous_temp = create_2d_vector<int>(16,16);
+            std::vector<int> prev_row;
+            std::vector<int> previous_p_row;
+            int prev = -1;
+            int previous_p = -1;
+            for(int i = 0; i<16; i++){
+                for(int j = 0; j < 16; j++){
+                    if(recorded_y+i < height){
+                        if(recorded_x+j < width){
+                            temporary.at(i).at(j) = data.at(recorded_y+i).at(recorded_x+j);
+                            previous_temp.at(i).at(j) = data.at(recorded_y+i).at(recorded_x+j)-previous.at(recorded_y+i).at(recorded_x+j);
+                            prev = temporary.at(i).at(j);
+                            previous_p = previous_temp.at(i).at(j);
+                            if(prev_row.size() == 16){
+                                prev_row.clear();
+                                previous_p_row.clear();
+                            }
+                            prev_row.push_back(temporary.at(i).at(j));
+                            previous_p_row.push_back(previous_temp.at(i).at(j));
+                        }else{
+                            if(prev != -1){
+                                temporary.at(i).at(j) = prev;
+                                previous_temp.at(i).at(j) = previous_p;
+                                prev_row.push_back(prev);
+                                previous_p_row.push_back(previous_p);
+                            }
                         }
-                        prev_row.push_back(temporary.at(i).at(j));
-                        previous_p_row.push_back(previous_temp.at(i).at(j));
                     }else{
-                        if(prev != -1){
-                            temporary.at(i).at(j) = prev;
-                            previous_temp.at(i).at(j) = previous_p;
-                            prev_row.push_back(prev);
-                            previous_p_row.push_back(previous_p);
+                        for(int k = 0; k< 16; k++){
+                            temporary.at(i).at(k) = prev_row.at(k);
+                            previous_temp.at(i).at(k) = previous_p_row.at(k);
                         }
                     }
-                }else{
-                    for(int k = 0; k< 16; k++){
-                        temporary.at(i).at(k) = prev_row.at(k);
-                        previous_temp.at(i).at(k) = previous_p_row.at(k);
+                }
+            }
+            auto motion_frames = create_2d_vector<int>(16,16);
+            std::pair<std::vector<std::vector<int>>,std::pair<int,int>>motion = MotionVector(recorded_x, recorded_y, height, width, previous, temporary);
+            motion_frames =motion.first;
+            std::pair<int,int> x_y = motion.second;
+            auto motion_dct_block = create_2d_vector<double>(16,16);
+            auto prev_dct_block = create_2d_vector<double>(16,16);
+            auto dct_block = create_2d_vector<double>(16,16);
+            if(quality=="high"){
+                dct_block = DCT_high(temporary, c);
+                prev_dct_block = DCT_high(previous_temp,c);
+                motion_dct_block = DCT_high(motion_frames, c);
+            }else{
+                dct_block = DCT_low(temporary, c);
+                prev_dct_block = DCT_low(previous_temp,c);
+                motion_dct_block = DCT_low(motion_frames, c);
+            }
+            std::pair<std::vector<std::vector<int>>,int> quantum = Quantized(dct_block, Q);
+            std::pair<std::vector<std::vector<int>>,int> quantum_p = Quantized(prev_dct_block, Q);
+            std::pair<std::vector<std::vector<int>>,int> quantum_v = Quantized(motion_dct_block, Q);
+            auto for_prev = create_2d_vector<int>(16,16);
+            for(int i = 0; i<16; i++){
+                for(int j = 0; j< 16; j++){
+                    for_prev.at(i).at(j) = (quantum.first.at(i).at(j)-127)*Q.at(i).at(j);
+                }
+            }
+            auto inverse_dct = create_2d_vector<double>(16,16);
+            if(quality=="high"){
+                inverse_dct = inverse_DCT_high(for_prev, c);
+            }else{
+                inverse_dct = inverse_DCT_low(for_prev, c);
+            }
+            for(int i = 0; i<16; i++){
+                for(int j = 0; j< 16; j++){
+                    if(recorded_y+i < height){
+                        if(recorded_x+j < width){
+                            int data = round(inverse_dct.at(i).at(j));
+                            if(data > 255){
+                                data = 255;
+                            }else if(data < 0){
+                                data = 0;
+                            }
+                            encoded_data.at(recorded_y+i).at(recorded_x+j) = data;
+                        }
                     }
                 }
             }
-        }
-        auto motion_frames = create_2d_vector<int>(16,16);
-        std::pair<std::vector<std::vector<int>>,std::pair<int,int>>motion = MotionVector(recorded_x, recorded_y, height, width, previous, temporary);
-        motion_frames =motion.first;
-        std::pair<int,int> x_y = motion.second;
-        auto motion_dct_block = create_2d_vector<double>(16,16);
-        auto prev_dct_block = create_2d_vector<double>(16,16);
-        auto dct_block = create_2d_vector<double>(16,16);
-        if(quality=="high"){
-            dct_block = DCT_high(temporary, c);
-            prev_dct_block = DCT_high(previous_temp,c);
-            motion_dct_block = DCT_high(motion_frames, c);
-        }else{
-            dct_block = DCT_low(temporary, c);
-            prev_dct_block = DCT_low(previous_temp,c);
-            motion_dct_block = DCT_low(motion_frames, c);
-        }
-        std::pair<std::vector<std::vector<int>>,int> quantum = Quantized(dct_block, Q);
-        std::pair<std::vector<std::vector<int>>,int> quantum_p = Quantized(prev_dct_block, Q);
-        std::pair<std::vector<std::vector<int>>,int> quantum_v = Quantized(motion_dct_block, Q);
-        auto for_prev = create_2d_vector<int>(16,16);
-        for(int i = 0; i<16; i++){
-            for(int j = 0; j< 16; j++){
-                for_prev.at(i).at(j) = (quantum.first.at(i).at(j)-127)*Q.at(i).at(j);
+            std::vector<int> encoding = E_O(quantum.first);
+            std::vector<int> encoding_p = E_O(quantum_p.first);
+            std::vector<int> encoding_v = E_O(quantum_v.first);
+            if(recorded_x == 0 &&recorded_y == 0){
+                rle(encoding, stream, 0, std::make_pair(0,0));
+            }else{
+                std::pair<std::vector<int>, int> pair = P_or_IFrame(encoding_v, encoding_p, encoding, x_y, std::make_pair(quantum_p.second,quantum_v.second));
+                rle(pair.first, stream, pair.second, x_y);
             }
-        }
-        auto inverse_dct = create_2d_vector<double>(16,16);
-        if(quality=="high"){
-            inverse_dct = inverse_DCT_high(for_prev, c);
         }else{
-            inverse_dct = inverse_DCT_low(for_prev, c);
-        }
-        for(int i = 0; i<16; i++){
-            for(int j = 0; j< 16; j++){
-                if(recorded_y+i < height){
-                    if(recorded_x+j < width){
-                        encoded_data.at(recorded_y+i).at(recorded_x+j) = round(inverse_dct.at(i).at(j));
+            auto temporary = create_2d_vector<int>(16,16);
+            std::vector<int> prev_row;
+            int prev = -1;
+            for(int i = 0; i<16; i++){
+                for(int j = 0; j < 16; j++){
+                    if(recorded_y+i < height){
+                        if(recorded_x+j < width){
+                            temporary.at(i).at(j) = data.at(recorded_y+i).at(recorded_x+j);
+                            prev = temporary.at(i).at(j);
+                            if(prev_row.size() == 16){
+                                prev_row.clear();
+                            }
+                            prev_row.push_back(temporary.at(i).at(j));
+                        }else{
+                            if(prev != -1){
+                                temporary.at(i).at(j) = prev;
+                                prev_row.push_back(prev);
+                            }
+                        }
+                    }else{
+                        for(int k = 0; k< 16; k++){
+                            temporary.at(i).at(k) = prev_row.at(k);
+                        }
                     }
                 }
             }
-        }
-        std::vector<int> encoding = E_O(quantum.first);
-        std::vector<int> encoding_p = E_O(quantum_p.first);
-        std::vector<int> encoding_v = E_O(quantum_v.first);
-        if(recorded_x == 0 &&recorded_y == 0){
+            auto dct_block = create_2d_vector<double>(16,16);
+            if(quality=="high"){
+                dct_block = DCT_high(temporary, c);
+            }else{
+                dct_block = DCT_low(temporary, c);
+            }
+            std::pair<std::vector<std::vector<int>>,int> quantum = Quantized(dct_block, Q);
+            auto for_prev = create_2d_vector<int>(16,16);
+            for(int i = 0; i<16; i++){
+                for(int j = 0; j< 16; j++){
+                    for_prev.at(i).at(j) = (quantum.first.at(i).at(j)-127)*Q.at(i).at(j);
+                }
+            }
+            auto inverse_dct = create_2d_vector<double>(16,16);
+            if(quality=="high"){
+                inverse_dct = inverse_DCT_high(for_prev, c);
+            }else{
+                inverse_dct = inverse_DCT_low(for_prev, c);
+            }
+            for(int i = 0; i<16; i++){
+                for(int j = 0; j< 16; j++){
+                    if(recorded_y+i < height){
+                        if(recorded_x+j < width){
+                            int data = round(inverse_dct.at(i).at(j));
+                            if(data > 255){
+                                data = 255;
+                            }else if(data < 0){
+                                data = 0;
+                            }
+                            encoded_data.at(recorded_y+i).at(recorded_x+j) = data;
+                        }
+                    }
+                }
+            }
+            std::vector<int> encoding = E_O(quantum.first);
             rle(encoding, stream, 0, std::make_pair(0,0));
-        }else{
-            std::pair<std::vector<int>, int> pair = P_or_IFrame(encoding_v, encoding_p, encoding, x_y, std::make_pair(quantum_p.second,quantum_v.second));
-            rle(pair.first, stream, pair.second, x_y);
         }
         if(recorded_x+16 >=width){
             if(recorded_y+16 >=height){
@@ -679,7 +750,7 @@ int main(int argc, char** argv){
     
     //After trial and error I decided to utilize a single quantum value.
     //I utilized the resouce below to better understand standard quantum matrices.
-    //I then create one that worked well with my DCT to limit the number of values which exceed the range of -127 and 127. 
+    //I then create one that worked well with my DCT in hopes to limit the number of values which exceed the range of -127 and 127. 
     //https://cs.stanford.edu/people/eroberts/courses/soco/projects/data-compression/lossy/jpeg/coeff.htm 
     //This has been expanded to a 16 x 16 Quantization matrix building on the 8 x 8 matrix using trial and error.
     auto Q = create_2d_vector<int>(16,16);
@@ -749,15 +820,21 @@ int main(int argc, char** argv){
             { 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160, 165, 170, 175 },
             { 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160, 165, 170, 175, 180 }
         };
+        for(int i = 0; i< 16; i++){
+            for(int j = 0; j<16; j++){
+                Q.at(i).at(j) = round(0.8*(Q.at(i).at(j))); 
+            }
+        }
         output_stream.push_byte((unsigned char)1);
     }
 
     output_stream.push_u32(height);
     output_stream.push_u32(width);
     //x_p stands for the previous version of the following YUV planes in order to apply P frames or motion vectors. 
-    auto y_p = create_2d_vector<int>(height, width);
+    auto y_p = create_2d_vector<int>(height,width);
     auto cb_p = create_2d_vector<int>((height/2),(width/2));
     auto cr_p = create_2d_vector<int>((height/2),(width/2));
+    int first = 1;
     while (reader.read_next_frame()){
         output_stream.push_byte(1); //Use a one byte flag to indicate whether there is a frame here
         YUVFrame420& frame = reader.frame();
@@ -765,17 +842,18 @@ int main(int argc, char** argv){
         for (u32 y = 0; y < height; y++)
             for (u32 x = 0; x < width; x++)
                 y_val.at(y).at(x) = frame.Y(x,y);
-        y_p = blocks(y_val, y_p, height, width, coeff, output_stream, Q, quality);
+        y_p = blocks(y_val, y_p, height, width, coeff, output_stream, Q, quality, first);
         auto Cb = create_2d_vector<int>((height/2),(width/2));
         for (u32 y = 0; y < height/2; y++)
             for (u32 x = 0; x < width/2; x++)
                 Cb.at(y).at(x) = frame.Cb(x,y);
-        cb_p =blocks(Cb, cb_p, ((height)/2), ((width)/2), coeff, output_stream, Q, quality);
+        cb_p =blocks(Cb, cb_p, ((height)/2), ((width)/2), coeff, output_stream, Q, quality,first);
         auto Cr = create_2d_vector<int>((height/2),(width/2));
         for (u32 y = 0; y < height/2; y++)
             for (u32 x = 0; x < width/2; x++)
                 Cr.at(y).at(x) = frame.Cr(x,y);
-        cr_p = blocks(Cr, cr_p, ((height)/2), ((width)/2), coeff, output_stream, Q, quality);
+        cr_p = blocks(Cr, cr_p, ((height)/2), ((width)/2), coeff, output_stream, Q, quality,first);
+        first = 0;
     }
 
     output_stream.push_byte(0); //Flag to indicate end of data

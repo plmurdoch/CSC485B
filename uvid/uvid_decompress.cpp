@@ -500,6 +500,7 @@ int main(int argc, char** argv){
     //I then utilized trial and error to find matrices that worked well with my DCT to limit the number of values which exceed the range of -127 and 127. 
     //https://cs.stanford.edu/people/eroberts/courses/soco/projects/data-compression/lossy/jpeg/coeff.htm 
     auto Q = create_2d_vector<int>(16,16);
+    auto Q_c = create_2d_vector<int>(16,16);
     //the next if statements allow us to change the quality setting of our Quantum based on the user input.
     if(quality == 0){
         Q = {
@@ -525,6 +526,7 @@ int main(int argc, char** argv){
                 Q.at(i).at(j) = (2*Q.at(i).at(j));
             }
         }
+        
     }else if(quality == 2){
         Q = {
             {11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11},
@@ -563,6 +565,11 @@ int main(int argc, char** argv){
             { 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160, 165, 170, 175 },
             { 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160, 165, 170, 175, 180 }
         };
+        for(int i = 0; i< 16; i++){
+            for(int j = 0; j<16; j++){
+                Q.at(i).at(j) = round(0.8*(Q.at(i).at(j))); 
+            }
+        }
     }
     std::vector<std::vector<double>> coeff = Coeff();
     u32 height {input_stream.read_u32()};
@@ -571,7 +578,8 @@ int main(int argc, char** argv){
     auto y_p = create_2d_vector<unsigned char>(height,width);
     auto cb_p = create_2d_vector<unsigned char>((height)/2,(width)/2);
     auto cr_p = create_2d_vector<unsigned char>((height)/2,(width)/2);
-    while (input_stream.read_byte()){
+    int flow = input_stream.read_byte();
+    while (flow){
         auto Y = create_2d_vector<unsigned char>(height,width);
         auto Cb = create_2d_vector<unsigned char>((height)/2,(width)/2);
         auto Cr = create_2d_vector<unsigned char>((height)/2,(width)/2);
@@ -590,6 +598,21 @@ int main(int argc, char** argv){
         result = read_input(input_stream, cr_p, Q, coeff,((height)/2),((width)/2), quality, over);
         Cr = result.first;
         cr_p = result.first;
+        over =result.second;
+        int overflow_byte = 0;
+        if(over.size() != 0){
+            int exp = 0;
+            for(int i = 7; i >= 0; i--){
+                overflow_byte  += over.at(i)*pow(2, exp);
+                exp++;
+            }
+        }
+        if(overflow_byte == 1){
+            flow = overflow_byte;
+        }
+        else{
+            flow = input_stream.read_byte();
+        }
         YUVFrame420& frame = writer.frame();
         for (u32 y = 0; y < height; y++)
             for (u32 x = 0; x < width; x++)
