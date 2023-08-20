@@ -593,15 +593,16 @@ int main(int argc, char** argv){
         Cr = result.first;
         cr_p = result.first;
         over =result.second;
-        int overflow_byte = 0;
+        int overflow_byte = -1;
         if(over.size() != 0){
+            overflow_byte = 0;
             int exp = 0;
             for(int i = 7; i >= 0; i--){
                 overflow_byte  += over.at(i)*pow(2, exp);
                 exp++;
             }
         }
-        if(overflow_byte == 1){
+        if(overflow_byte == 1 || overflow_byte == 0){
             flow = overflow_byte;
         }
         else{
